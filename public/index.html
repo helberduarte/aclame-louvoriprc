@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aclame — Escalas e Louvor</title>
+<link rel="stylesheet" href="/styles.css?v=5">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🙌</text></svg>">
+</head>
+<body>
+
+<!-- Tela de login/registro -->
+<div id="tela-login" class="tela-login oculto">
+  <div class="login-cartao">
+    <div class="login-marca">🙌</div>
+    <h1 class="login-titulo">Aclame</h1>
+    <p class="login-sub">Escalas, louvor e voluntariado da sua igreja</p>
+    <div id="login-form">
+      <div class="form-linha"><label>Telefone ou e-mail</label><input id="li-ident" autocomplete="username" placeholder="11999990001 ou voce@igreja.com"></div>
+      <div class="form-linha"><label>Senha</label><input id="li-senha" type="password" autocomplete="current-password" placeholder="••••"></div>
+      <button class="botao primario largo" id="li-entrar">Entrar</button>
+      <p class="login-troca">Primeira vez? <a href="#" id="li-ir-registro">Criar minha conta</a></p>
+    </div>
+    <div id="registro-form" class="oculto">
+      <div class="form-linha"><label>Nome completo</label><input id="re-nome" placeholder="Seu nome"></div>
+      <div class="form-linha"><label>Telefone (para o WhatsApp das escalas)</label><input id="re-fone" placeholder="11999990001"></div>
+      <div class="form-linha"><label>E-mail (opcional)</label><input id="re-email" placeholder="voce@igreja.com"></div>
+      <div class="form-linha"><label>Senha</label><input id="re-senha" type="password" placeholder="mínimo 4 caracteres"></div>
+      <button class="botao primario largo" id="re-criar">Criar conta</button>
+      <p class="login-troca">Já tem conta? <a href="#" id="li-ir-login">Entrar</a></p>
+    </div>
+    <p class="login-dica" id="login-dica"></p>
+  </div>
+</div>
+
+<!-- Aplicação -->
+<div id="tela-app" class="oculto">
+  <header class="topbar">
+    <div class="brand">🙌 <strong>Aclame</strong></div>
+    <div class="topbar-right">
+      <button id="btn-sino" class="btn-sino" title="Notificações">🔔<span id="sino-badge" class="sino-badge oculto"></span></button>
+      <div class="usuario-chip" id="usuario-chip"></div>
+      <button class="botao mini" id="btn-sair">Sair</button>
+    </div>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" id="sidebar"></nav>
+    <main class="conteudo" id="conteudo"></main>
+  </div>
+</div>
+
+<div id="tooltip" class="tooltip oculto"></div>
+<div id="modal-fundo" class="modal-fundo oculto"><div id="modal" class="modal"></div></div>
+<div id="toasts" class="toasts"></div>
+
+<script src="/musica-utils.js"></script>
+<script src="/app.js?v=6"></script>
+</body>
+</html>

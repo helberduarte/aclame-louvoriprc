@@ -1,0 +1,7 @@
+# Banco de dados local (contém dados reais da igreja — telefones, escalas, senhas com hash)
+voluts.db
+voluts.db.*
+*.bak
+
+# Logs e temporários
+*.log
