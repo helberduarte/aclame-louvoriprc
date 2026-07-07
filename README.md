@@ -10,11 +10,11 @@ App local de **escalas, louvor e voluntariado** para a sua igreja. Sem nuvem, se
 
 | Usuário | Login | Papel |
 |---|---|---|
-| Evandro Silva | `evandro@aclame.local` ou `11999990001` | Administrador |
-| Viviane Costa | `viviane@aclame.local` | Líder do Louvor |
-| Elielson Ramos | `elielson@aclame.local` | Líder da Mídia |
-| Kelly Souza | `kelly@aclame.local` | Membro |
-| Clarianne Dias | `clarianne@aclame.local` | Membro |
+| Evandro | `evandro@aclame.local` ou `65900000000` | Administrador |
+| Viviane | `viviane@aclame.local` | Líder do Louvor |
+| Elielson| `elielson@aclame.local` | Prebítero |
+| Kelly | `kelly@aclame.local` | Membro |
+| Clarianne | `clarianne@aclame.local` | Membro |
 
 Para começar do zero, apague `voluts.db` (e remova `--seed` do `iniciar.bat` se não quiser a demo). O primeiro usuário que se registrar num banco vazio vira administrador.
 
