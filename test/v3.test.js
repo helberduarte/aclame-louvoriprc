@@ -6,7 +6,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { abrir, hojeISO, abrirTeste, encerrarTestes, prepararSchema } = require('../db');
 const engine = require('../engine');
-const { criarServidor } = require('../server');
+const { criarServidor } = require('../app-core');
 
 const DOM1 = '2026-07-05'; // domingo (calendário real)
 

@@ -2,7 +2,7 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const { abrirTeste, encerrarTestes } = require('../db');
-const { criarServidor } = require('../server');
+const { criarServidor } = require('../app-core');
 
 let servidor, base;
 

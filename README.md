@@ -9,22 +9,22 @@ Requer um PostgreSQL acessível (o mais simples é instalar localmente — veja 
 ```bash
 npm install
 npm test                 # roda os 56 testes num schema Postgres efêmero (autoisolado, some sozinho)
-PORT=3000 node server.js # sobe o servidor em http://localhost:3000
+PORT=3000 node app-core.js # sobe o servidor em http://localhost:3000
 ```
 
 Sem a variável `PGURL` definida, o servidor usa `postgres://aclame:aclame@127.0.0.1:5432/aclame` por padrão (veja `.env.example`).
 
-**Dados de demonstração**: `ACLAME_SEED=1 node server.js` (só roda se o banco estiver vazio).
+**Dados de demonstração**: `ACLAME_SEED=1 node app-core.js` (só roda se o banco estiver vazio).
 
 **Usuários de demonstração** (senha `1234`):
 
 | Usuário | Login | Papel |
 |---|---|---|
-| Evandro | `evandro@aclame.local` ou `65900000000` | Administrador |
-| Viviane | `viviane@aclame.local` | Líder do Louvor |
-| Elielson| `elielson@aclame.local` | Prebítero |
-| Kelly | `kelly@aclame.local` | Membro |
-| Clarianne | `clarianne@aclame.local` | Membro |
+| Evandro Silva | `evandro@aclame.local` ou `11999990001` | Administrador |
+| Viviane Costa | `viviane@aclame.local` | Líder do Louvor |
+| Elielson Ramos | `elielson@aclame.local` | Líder da Mídia |
+| Kelly Souza | `kelly@aclame.local` | Membro |
+| Clarianne Dias | `clarianne@aclame.local` | Membro |
 
 O primeiro usuário que se registrar num banco vazio vira administrador automaticamente.
 
@@ -123,7 +123,7 @@ Passo a passo completo para quem não é programador: **`NUVEM-PASSO-A-PASSO.md`
 
 - Node.js ≥ 22.5. Backend em `node:http` puro (sem framework) + `pg` como única dependência npm.
 - **PostgreSQL (Supabase, plano gratuito)** — `pg-core.js` é um adaptador que dá ao driver `pg` a mesma interface de `db.prepare(sql).run/get/all()` do antigo `node:sqlite`, porém assíncrona.
-- **Vercel (plano gratuito)** — `server.js` exporta `criarHandler(db)` (função HTTP pura, sem `.listen()`), usada por `api/[[...path]].js` como função serverless. `criarServidor(db)` continua existindo para uso local/testes (`http.createServer` de verdade). Arquivos de `public/` são servidos diretamente pela Vercel, sem passar pela função.
+- **Vercel (plano gratuito)** — `app-core.js` exporta `criarHandler(db)` (função HTTP pura, sem `.listen()`), usada por `api/[[...path]].js` como função serverless. `criarServidor(db)` continua existindo para uso local/testes (`http.createServer` de verdade). ⚠️ O arquivo NÃO se chama `server.js`/`server.mjs` de propósito: a Vercel reserva esse nome exato na raiz do projeto para uma convenção própria de "servidor capturado" que ignora a pasta `api/` — nomear com esse padrão quebra o deploy. Arquivos de `public/` são servidos diretamente pela Vercel, sem passar pela função.
 - Senhas com scrypt + sal; sessão via cookie httpOnly (30 dias).
 - Schema criado/migrado automaticamente na primeira conexão (`prepararSchema`, controlado pela tabela `schema_meta` — substitui o antigo `PRAGMA user_version` do SQLite).
 - Backup: `GET /api/export` (admin) — dados sem credenciais.

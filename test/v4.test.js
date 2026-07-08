@@ -3,7 +3,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const { hojeISO, abrirTeste, encerrarTestes } = require('../db');
 const engine = require('../engine');
-const { criarServidor } = require('../server');
+const { criarServidor } = require('../app-core');
 
 async function novoBanco() {
   const db = await abrirTeste();

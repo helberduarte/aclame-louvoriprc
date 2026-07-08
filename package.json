@@ -3,9 +3,9 @@
   "private": true,
   "version": "2.0.0",
   "description": "ACLAME — escalas, louvor e voluntariado (IPR Cáceres-MT). Nuvem: PostgreSQL (Supabase) + Vercel.",
-  "main": "server.js",
+  "main": "app-core.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node app-core.js",
     "test": "node --test"
   },
   "engines": { "node": ">=22.5" },

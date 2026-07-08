@@ -7,7 +7,7 @@
 // viva enquanto a instância da função estiver "quente" (reaproveitada entre
 // requisições sequenciais) — evita reconectar ao pooler a cada chamada.
 const { abrir } = require('../db');
-const { criarHandler } = require('../server');
+const { criarHandler } = require('../app-core');
 
 let promessaHandler = null;
 
