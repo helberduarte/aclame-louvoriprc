@@ -1,7 +1,15 @@
-# Banco de dados local (contém dados reais da igreja — telefones, escalas, senhas com hash)
+# Banco de dados local antigo (SQLite — não usado mais, mas por segurança)
 voluts.db
 voluts.db.*
 *.bak
+
+# Segredos e ambiente
+.env
+.env.local
+.vercel
+
+# Node
+node_modules/
 
 # Logs e temporários
 *.log

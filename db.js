@@ -1,6 +1,5 @@
 'use strict';
-const { DatabaseSync } = require('node:sqlite');
-const fs = require('node:fs');
+const { Db, conectar } = require('./pg-core');
 const crypto = require('node:crypto');
 
 const VERSAO_SCHEMA = 3;
@@ -27,33 +26,6 @@ const MIGRACOES = {
 };
 
 const SCHEMA = `
-PRAGMA foreign_keys = ON;
-
-CREATE TABLE IF NOT EXISTS usuarios (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  nome TEXT NOT NULL,
-  telefone TEXT UNIQUE,
-  email TEXT UNIQUE,
-  senha_hash TEXT NOT NULL,
-  sal TEXT NOT NULL,
-  papel TEXT NOT NULL DEFAULT 'membro' CHECK (papel IN ('admin','lider','membro')),
-  voluntario_id INTEGER REFERENCES voluntarios(id) ON DELETE SET NULL,
-  criado_em TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS sessoes (
-  token TEXT PRIMARY KEY,
-  usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-  criada_em TEXT NOT NULL,
-  expira_em TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS ministerio_lideres (
-  usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-  ministerio_id INTEGER NOT NULL REFERENCES ministerios(id) ON DELETE CASCADE,
-  PRIMARY KEY (usuario_id, ministerio_id)
-);
-
 CREATE TABLE IF NOT EXISTS locais (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   nome TEXT NOT NULL,
@@ -108,6 +80,48 @@ CREATE TABLE IF NOT EXISTS bloqueios (
   periodo TEXT NOT NULL DEFAULT 'dia' CHECK (periodo IN ('dia','matutino','vespertino','noturno')),
   motivo TEXT NOT NULL,
   UNIQUE (voluntario_id, data)
+);
+
+CREATE TABLE IF NOT EXISTS notificacoes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  voluntario_id INTEGER NOT NULL REFERENCES voluntarios(id) ON DELETE CASCADE,
+  mensagem TEXT NOT NULL,
+  lida INTEGER NOT NULL DEFAULT 0,
+  criada_em TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS pontos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  voluntario_id INTEGER NOT NULL REFERENCES voluntarios(id) ON DELETE CASCADE,
+  valor INTEGER NOT NULL,
+  motivo TEXT NOT NULL,
+  ref TEXT,
+  criado_em TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS usuarios (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome TEXT NOT NULL,
+  telefone TEXT UNIQUE,
+  email TEXT UNIQUE,
+  senha_hash TEXT NOT NULL,
+  sal TEXT NOT NULL,
+  papel TEXT NOT NULL DEFAULT 'membro' CHECK (papel IN ('admin','lider','membro')),
+  voluntario_id INTEGER REFERENCES voluntarios(id) ON DELETE SET NULL,
+  criado_em TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sessoes (
+  token TEXT PRIMARY KEY,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  criada_em TEXT NOT NULL,
+  expira_em TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ministerio_lideres (
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  ministerio_id INTEGER NOT NULL REFERENCES ministerios(id) ON DELETE CASCADE,
+  PRIMARY KEY (usuario_id, ministerio_id)
 );
 
 CREATE TABLE IF NOT EXISTS eventos (
@@ -198,14 +212,6 @@ CREATE TABLE IF NOT EXISTS avisos (
   criado_em TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS notificacoes (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  voluntario_id INTEGER NOT NULL REFERENCES voluntarios(id) ON DELETE CASCADE,
-  mensagem TEXT NOT NULL,
-  lida INTEGER NOT NULL DEFAULT 0,
-  criada_em TEXT NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS feedback (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   ocorrencia_id INTEGER NOT NULL REFERENCES ocorrencias(id) ON DELETE CASCADE,
@@ -214,15 +220,6 @@ CREATE TABLE IF NOT EXISTS feedback (
   comentario TEXT,
   criado_em TEXT NOT NULL,
   UNIQUE (ocorrencia_id, voluntario_id)
-);
-
-CREATE TABLE IF NOT EXISTS pontos (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  voluntario_id INTEGER NOT NULL REFERENCES voluntarios(id) ON DELETE CASCADE,
-  valor INTEGER NOT NULL,
-  motivo TEXT NOT NULL,
-  ref TEXT,
-  criado_em TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS musicas (
@@ -304,6 +301,9 @@ CREATE TABLE IF NOT EXISTS convites (
 );
 `;
 
+// DDL traduzido para PostgreSQL (única diferença estrutural: autoincremento).
+const SCHEMA_PG = SCHEMA.replace(/INTEGER PRIMARY KEY AUTOINCREMENT/g, 'BIGSERIAL PRIMARY KEY').replace(/\bINTEGER\b/g, 'BIGINT');
+
 function agoraISO() {
   const d = new Date();
   const p = (n) => String(n).padStart(2, '0');
@@ -317,43 +317,63 @@ function hojeISO(desloc = 0) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-// Abre o banco. Bancos v2+ são migrados no lugar (sem perder dados);
-// anteriores à v2 são arquivados como .bak e recomeça-se do zero.
-function abrir(caminho = 'voluts.db') {
-  if (caminho !== ':memory:' && fs.existsSync(caminho)) {
-    const sonda = new DatabaseSync(caminho);
-    const versao = sonda.prepare('PRAGMA user_version').get().user_version;
-    const temTabelas = sonda.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table'").get().n > 0;
-    sonda.close();
-    if (temTabelas && versao < 2) {
-      fs.renameSync(caminho, caminho + '.v' + versao + '.bak');
-      console.log(`Banco antigo arquivado em ${caminho}.v${versao}.bak — criando schema v${VERSAO_SCHEMA}.`);
-    }
-  }
-  const db = new DatabaseSync(caminho);
-  migrar(db);
-  db.exec(SCHEMA);
-  db.exec(`PRAGMA user_version = ${VERSAO_SCHEMA}`);
-  return db;
+// Conexões padrão: local para desenvolvimento; em produção defina PGURL (Supabase).
+const PGURL_PADRAO = 'postgres://aclame:aclame@127.0.0.1:5432/aclame';
+const PGURL_TESTE = 'postgres://aclame:aclame@127.0.0.1:5432/aclame_test';
+
+// Abre o banco PostgreSQL: cria o schema na primeira vez e aplica migrações
+// incrementais nas seguintes (controle de versão na tabela schema_meta).
+function abrir(url = process.env.PGURL || PGURL_PADRAO) {
+  return conectar(url).then(async (client) => {
+    const db = new Db(client);
+    await prepararSchema(db);
+    return db;
+  });
 }
 
-// Aplica migrações incrementais em bancos já populados (v2 em diante).
-function migrar(db) {
-  const versao = db.prepare('PRAGMA user_version').get().user_version;
-  const temTabelas = db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table'").get().n > 0;
-  if (!temTabelas || versao < 2 || versao >= VERSAO_SCHEMA) return;
-  for (let v = versao; v < VERSAO_SCHEMA; v++) {
+// Banco de teste isolado: um schema efêmero por chamada (equivalente ao ':memory:'),
+// dropado no db.close(). encerrarTestes() fecha qualquer instância esquecida.
+const _instanciasTeste = new Set();
+function abrirTeste() {
+  const nome = 't_' + crypto.randomBytes(6).toString('hex');
+  return conectar(process.env.PGURL_TESTE || PGURL_TESTE).then(async (client) => {
+    const db = new Db(client, { schema: nome });
+    _instanciasTeste.add(db);
+    await db.exec(`CREATE SCHEMA ${nome}; SET search_path TO ${nome}`);
+    await prepararSchema(db);
+    return db;
+  });
+}
+
+async function encerrarTestes() {
+  for (const db of _instanciasTeste) await db.close();
+  _instanciasTeste.clear();
+}
+
+// Cria o schema (banco novo) ou aplica MIGRACOES pendentes (banco existente).
+async function prepararSchema(db) {
+  await db.exec('CREATE TABLE IF NOT EXISTS schema_meta (id INTEGER PRIMARY KEY CHECK (id = 1), versao INTEGER NOT NULL)');
+  const meta = await db.prepare('SELECT versao FROM schema_meta WHERE id = 1').get();
+  if (!meta) {
+    await db.exec(SCHEMA_PG);
+    await db.prepare('INSERT INTO schema_meta (id, versao) VALUES (?, ?)').run(1, VERSAO_SCHEMA);
+    return;
+  }
+  for (let v = meta.versao; v < VERSAO_SCHEMA; v++) {
     for (const sql of MIGRACOES[v] || []) {
-      try { db.exec(sql); } catch (e) {
-        if (!/duplicate column/i.test(e.message)) throw e;
+      try { await db.exec(sql); } catch (e) {
+        if (e.code !== '42701' && !/duplicate column/i.test(e.message || '')) throw e; // 42701 = coluna já existe
       }
     }
     console.log(`Migração v${v} → v${v + 1} aplicada.`);
   }
+  if (meta.versao !== VERSAO_SCHEMA) {
+    await db.prepare('UPDATE schema_meta SET versao = ?').run(VERSAO_SCHEMA);
+  }
 }
 
-function estaVazio(db) {
-  return db.prepare('SELECT COUNT(*) AS n FROM ministerios').get().n === 0;
+async function estaVazio(db) {
+  return (await db.prepare('SELECT COUNT(*) AS n FROM ministerios').get()).n === 0;
 }
 
 // ---------- senhas ----------
@@ -365,34 +385,34 @@ function conferirSenha(senha, sal, hash) {
   return calc.length === alvo.length && crypto.timingSafeEqual(calc, alvo);
 }
 
-function criarUsuario(db, { nome, telefone, email, senha, papel = 'membro', voluntario_id = null }) {
+async function criarUsuario(db, { nome, telefone, email, senha, papel = 'membro', voluntario_id = null }) {
   const sal = gerarSal();
-  const r = db.prepare(
+  const r = (await db.prepare(
     'INSERT INTO usuarios (nome, telefone, email, senha_hash, sal, papel, voluntario_id, criado_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(nome, telefone || null, email || null, hashSenha(senha, sal), sal, papel, voluntario_id, agoraISO());
+  ).run(nome, telefone || null, email || null, hashSenha(senha, sal), sal, papel, voluntario_id, agoraISO()));
   return Number(r.lastInsertRowid);
 }
 
 // ---------- seed de demonstração ----------
-function seedDemo(db) {
-  const ins = (sql, ...params) => Number(db.prepare(sql).run(...params).lastInsertRowid);
+async function seedDemo(db) {
+  const ins = async (sql, ...params) => Number((await db.prepare(sql).run(...params)).lastInsertRowid);
   const agora = agoraISO();
 
-  const matriz = ins("INSERT INTO locais (nome, tipo) VALUES ('Matriz', 'matriz')");
-  const capela = ins("INSERT INTO locais (nome, tipo) VALUES ('Capela São José', 'capela')");
+  const matriz = (await ins("INSERT INTO locais (nome, tipo) VALUES ('Matriz', 'matriz')"));
+  const capela = (await ins("INSERT INTO locais (nome, tipo) VALUES ('Capela São José', 'capela')"));
 
-  const louvor = ins("INSERT INTO ministerios (nome, cor) VALUES ('Louvor', '#7c5cd6')");
-  const midia = ins("INSERT INTO ministerios (nome, cor) VALUES ('Mídia', '#d97706')");
-  const recepcao = ins("INSERT INTO ministerios (nome, cor) VALUES ('Recepção', '#0284c7')");
-  const diaconia = ins("INSERT INTO ministerios (nome, cor) VALUES ('Diaconia', '#059669')");
+  const louvor = (await ins("INSERT INTO ministerios (nome, cor) VALUES ('Louvor', '#7c5cd6')"));
+  const midia = (await ins("INSERT INTO ministerios (nome, cor) VALUES ('Mídia', '#d97706')"));
+  const recepcao = (await ins("INSERT INTO ministerios (nome, cor) VALUES ('Recepção', '#0284c7')"));
+  const diaconia = (await ins("INSERT INTO ministerios (nome, cor) VALUES ('Diaconia', '#059669')"));
 
   const f = {};
-  const funcao = (min, nome) => { f[nome] = ins('INSERT INTO funcoes (ministerio_id, nome) VALUES (?, ?)', min, nome); return f[nome]; };
-  funcao(louvor, 'Vocal'); funcao(louvor, 'Violão'); funcao(louvor, 'Teclado');
-  funcao(louvor, 'Baixo'); funcao(louvor, 'Viola'); funcao(louvor, 'Bateria');
-  funcao(midia, 'Projeção'); funcao(midia, 'Operador de Som');
-  funcao(recepcao, 'Porta principal'); funcao(recepcao, 'Acolhida');
-  funcao(diaconia, 'Diácono');
+  const funcao = async (min, nome) => { f[nome] = (await ins('INSERT INTO funcoes (ministerio_id, nome) VALUES (?, ?)', min, nome)); return f[nome]; };
+  (await funcao(louvor, 'Vocal')); (await funcao(louvor, 'Violão')); (await funcao(louvor, 'Teclado'));
+  (await funcao(louvor, 'Baixo')); (await funcao(louvor, 'Viola')); (await funcao(louvor, 'Bateria'));
+  (await funcao(midia, 'Projeção')); (await funcao(midia, 'Operador de Som'));
+  (await funcao(recepcao, 'Porta principal')); (await funcao(recepcao, 'Acolhida'));
+  (await funcao(diaconia, 'Diácono'));
 
   // Voluntários — vários multi-setoriais (habilidades em mais de um ministério).
   const gente = [
@@ -417,46 +437,47 @@ function seedDemo(db) {
   const vol = {};
   let fone = 11999990001;
   for (const [nome, habilidades] of gente) {
-    const id = ins('INSERT INTO voluntarios (nome, telefone, email, termo_aceito_em) VALUES (?, ?, ?, ?)',
-      nome, String(fone++), nome.toLowerCase().split(' ')[0] + '@aclame.local', agora);
+    const id = (await ins('INSERT INTO voluntarios (nome, telefone, email, termo_aceito_em) VALUES (?, ?, ?, ?)',
+      nome, String(fone++), nome.toLowerCase().split(' ')[0] + '@aclame.local', agora));
     vol[nome] = id;
-    habilidades.forEach((h, i) =>
-      db.prepare('INSERT INTO voluntario_funcoes (voluntario_id, funcao_id, preferencia) VALUES (?, ?, ?)').run(id, f[h], i === 0 ? 1 : 0));
+    for (let i = 0; i < habilidades.length; i++) {
+      await db.prepare('INSERT INTO voluntario_funcoes (voluntario_id, funcao_id, preferencia) VALUES (?, ?, ?)').run(id, f[habilidades[i]], i === 0 ? 1 : 0);
+    }
   }
 
   // Usuários (senha 1234): admin, líderes e membros de exemplo.
-  const uEvandro = criarUsuario(db, { nome: 'Evandro Silva', telefone: '11999990001', email: 'evandro@aclame.local', senha: '1234', papel: 'admin', voluntario_id: vol['Evandro Silva'] });
-  const uViviane = criarUsuario(db, { nome: 'Viviane Costa', telefone: '11999990002', email: 'viviane@aclame.local', senha: '1234', papel: 'lider', voluntario_id: vol['Viviane Costa'] });
-  const uElielson = criarUsuario(db, { nome: 'Elielson Ramos', telefone: '11999990003', email: 'elielson@aclame.local', senha: '1234', papel: 'lider', voluntario_id: vol['Elielson Ramos'] });
-  criarUsuario(db, { nome: 'Kelly Souza', telefone: '11999990004', email: 'kelly@aclame.local', senha: '1234', papel: 'membro', voluntario_id: vol['Kelly Souza'] });
-  criarUsuario(db, { nome: 'Clarianne Dias', telefone: '11999990005', email: 'clarianne@aclame.local', senha: '1234', papel: 'membro', voluntario_id: vol['Clarianne Dias'] });
-  db.prepare('INSERT INTO ministerio_lideres (usuario_id, ministerio_id) VALUES (?, ?)').run(uViviane, louvor);
-  db.prepare('INSERT INTO ministerio_lideres (usuario_id, ministerio_id) VALUES (?, ?)').run(uElielson, midia);
-  db.prepare('INSERT INTO ministerio_lideres (usuario_id, ministerio_id) VALUES (?, ?)').run(uEvandro, recepcao);
-  db.prepare('INSERT INTO ministerio_lideres (usuario_id, ministerio_id) VALUES (?, ?)').run(uEvandro, diaconia);
+  const uEvandro = (await criarUsuario(db, { nome: 'Evandro Silva', telefone: '11999990001', email: 'evandro@aclame.local', senha: '1234', papel: 'admin', voluntario_id: vol['Evandro Silva'] }));
+  const uViviane = (await criarUsuario(db, { nome: 'Viviane Costa', telefone: '11999990002', email: 'viviane@aclame.local', senha: '1234', papel: 'lider', voluntario_id: vol['Viviane Costa'] }));
+  const uElielson = (await criarUsuario(db, { nome: 'Elielson Ramos', telefone: '11999990003', email: 'elielson@aclame.local', senha: '1234', papel: 'lider', voluntario_id: vol['Elielson Ramos'] }));
+  (await criarUsuario(db, { nome: 'Kelly Souza', telefone: '11999990004', email: 'kelly@aclame.local', senha: '1234', papel: 'membro', voluntario_id: vol['Kelly Souza'] }));
+  (await criarUsuario(db, { nome: 'Clarianne Dias', telefone: '11999990005', email: 'clarianne@aclame.local', senha: '1234', papel: 'membro', voluntario_id: vol['Clarianne Dias'] }));
+  (await db.prepare('INSERT INTO ministerio_lideres (usuario_id, ministerio_id) VALUES (?, ?)').run(uViviane, louvor));
+  (await db.prepare('INSERT INTO ministerio_lideres (usuario_id, ministerio_id) VALUES (?, ?)').run(uElielson, midia));
+  (await db.prepare('INSERT INTO ministerio_lideres (usuario_id, ministerio_id) VALUES (?, ?)').run(uEvandro, recepcao));
+  (await db.prepare('INSERT INTO ministerio_lideres (usuario_id, ministerio_id) VALUES (?, ?)').run(uEvandro, diaconia));
 
   // Disponibilidades de exemplo: alguns só domingo; um bloqueio justificado.
   const dom = 0, qua = 3;
   for (const n of ['Ana Souza', 'Bruno Lima', 'Carla Dias', 'Elisa Martins']) {
-    db.prepare('INSERT INTO disponibilidade (voluntario_id, dia_semana) VALUES (?, ?)').run(vol[n], dom);
+    (await db.prepare('INSERT INTO disponibilidade (voluntario_id, dia_semana) VALUES (?, ?)').run(vol[n], dom));
   }
   for (const n of ['Daniel Rocha', 'Felipe Nunes', 'Gabriela Pinto', 'João Pereira', 'Kelly Souza', 'Clarianne Dias']) {
-    db.prepare('INSERT INTO disponibilidade (voluntario_id, dia_semana) VALUES (?, ?)').run(vol[n], dom);
-    db.prepare("INSERT INTO disponibilidade (voluntario_id, dia_semana, hora_inicio) VALUES (?, ?, '18:00')").run(vol[n], qua);
+    (await db.prepare('INSERT INTO disponibilidade (voluntario_id, dia_semana) VALUES (?, ?)').run(vol[n], dom));
+    (await db.prepare("INSERT INTO disponibilidade (voluntario_id, dia_semana, hora_inicio) VALUES (?, ?, '18:00')").run(vol[n], qua));
   }
-  db.prepare('INSERT INTO bloqueios (voluntario_id, data, motivo) VALUES (?, ?, ?)').run(vol['Iara Campos'], hojeISO(14), 'Viagem de trabalho');
+  (await db.prepare('INSERT INTO bloqueios (voluntario_id, data, motivo) VALUES (?, ?, ?)').run(vol['Iara Campos'], hojeISO(14), 'Viagem de trabalho'));
 
   // Celebrações.
-  const cultoDom = ins("INSERT INTO eventos (nome, local_id, recorrente, dia_semana, hora_inicio, duracao_min, criado_por, criado_em) VALUES ('Culto de Domingo', ?, 1, 0, '19:00', 120, ?, ?)", matriz, uEvandro, agora);
-  const cultoQua = ins("INSERT INTO eventos (nome, local_id, recorrente, dia_semana, hora_inicio, duracao_min, criado_por, criado_em) VALUES ('Culto de Doutrina', ?, 1, 3, '19:30', 90, ?, ?)", matriz, uEvandro, agora);
-  ins("INSERT INTO eventos (nome, local_id, recorrente, dia_semana, hora_inicio, duracao_min, criado_por, criado_em) VALUES ('Celebração na Capela', ?, 1, 0, '09:00', 90, ?, ?)", capela, uEvandro, agora);
+  const cultoDom = (await ins("INSERT INTO eventos (nome, local_id, recorrente, dia_semana, hora_inicio, duracao_min, criado_por, criado_em) VALUES ('Culto de Domingo', ?, 1, 0, '19:00', 120, ?, ?)", matriz, uEvandro, agora));
+  const cultoQua = (await ins("INSERT INTO eventos (nome, local_id, recorrente, dia_semana, hora_inicio, duracao_min, criado_por, criado_em) VALUES ('Culto de Doutrina', ?, 1, 3, '19:30', 90, ?, ?)", matriz, uEvandro, agora));
+  (await ins("INSERT INTO eventos (nome, local_id, recorrente, dia_semana, hora_inicio, duracao_min, criado_por, criado_em) VALUES ('Celebração na Capela', ?, 1, 0, '09:00', 90, ?, ?)", capela, uEvandro, agora));
 
   const needs = [
     [cultoDom, 'Vocal', 3], [cultoDom, 'Violão', 1], [cultoDom, 'Teclado', 1], [cultoDom, 'Baixo', 1], [cultoDom, 'Bateria', 1],
     [cultoDom, 'Projeção', 1], [cultoDom, 'Operador de Som', 1], [cultoDom, 'Porta principal', 1], [cultoDom, 'Acolhida', 2], [cultoDom, 'Diácono', 2],
     [cultoQua, 'Vocal', 1], [cultoQua, 'Violão', 1], [cultoQua, 'Projeção', 1], [cultoQua, 'Operador de Som', 1], [cultoQua, 'Diácono', 1],
   ];
-  for (const [e, nomeF, q] of needs) db.prepare('INSERT INTO evento_necessidades (evento_id, funcao_id, quantidade) VALUES (?, ?, ?)').run(e, f[nomeF], q);
+  for (const [e, nomeF, q] of needs) (await db.prepare('INSERT INTO evento_necessidades (evento_id, funcao_id, quantidade) VALUES (?, ?, ?)').run(e, f[nomeF], q));
 
   // Aniversários de demonstração (MM-DD).
   const nascimentos = {
@@ -464,7 +485,7 @@ function seedDemo(db) {
     'Evandro Silva': '12-01', 'Ana Souza': '07-21', 'Bruno Lima': '08-05', 'Elielson Ramos': '07-28',
   };
   for (const [nome, nasc] of Object.entries(nascimentos)) {
-    db.prepare('UPDATE voluntarios SET nascimento = ? WHERE id = ?').run(nasc, vol[nome]);
+    (await db.prepare('UPDATE voluntarios SET nascimento = ? WHERE id = ?').run(nasc, vol[nome]));
   }
 
   // Estante musical com regiões marcadas, tons, BPM, duração e classificação.
@@ -479,7 +500,7 @@ function seedDemo(db) {
   ];
   const musIds = {};
   for (const [t, a, tom, bpm, dur, classif] of musicas) {
-    musIds[t] = ins(
+    musIds[t] = (await ins(
       'INSERT INTO musicas (titulo, artista, tom, bpm, duracao, classificacao, letra, cifra, link_spotify, link_cifraclub, link_youtube, link_letra, chave_dedupe, criado_por, criado_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       t, a, tom, bpm, dur, classif,
       `[INTRO]\n(instrumental)\n\n[VERSO]\nLetra de exemplo do verso de ${t}\nSegunda linha do verso\n\n[PRÉ-REFRÃO]\nPreparando o refrão\n\n[REFRÃO]\nRefrão de exemplo de ${t}\nCantado com todo o coração\n\n[FINAL]\nEncerramento suave`,
@@ -488,29 +509,33 @@ function seedDemo(db) {
       'https://www.cifraclub.com.br/?q=' + encodeURIComponent(t + ' ' + a),
       'https://www.youtube.com/results?search_query=' + encodeURIComponent(t + ' ' + a),
       'https://www.letras.mus.br/?q=' + encodeURIComponent(t),
-      normalizarChave(t, a), uViviane, agora);
+      normalizarChave(t, a), uViviane, agora));
   }
 
   // Um culto de exemplo já publicado no mural, com roteiro completo (estilo grupo do WhatsApp).
   const proxDomingo = proximoDia(0);
-  const oc = ins(`INSERT INTO ocorrencias (evento_id, data, hora_inicio, duracao_min, tema, pregador, ministra, responsavel, abertura, publicada_em, publicada_por, criado_por, criado_em)
+  const oc = (await ins(`INSERT INTO ocorrencias (evento_id, data, hora_inicio, duracao_min, tema, pregador, ministra, responsavel, abertura, publicada_em, publicada_por, criado_por, criado_em)
     VALUES (?, ?, '19:00', 120, 'Ceia do Senhor', 'Pr. Marciel', 'Viviane', 'Departamento Masculino', 'Viviane — Abertura e Louvor (hino: Atrai o Meu Coração — Nathanael)', ?, ?, ?, ?)`,
-    cultoDom, proxDomingo, agora, uEvandro, uEvandro, agora);
+    cultoDom, proxDomingo, agora, uEvandro, uEvandro, agora));
   const ops = [
     ['Departamento Infantil', null],
     ['Devocional', 'Elielson'],
     ['Departamento Feminino', null],
   ];
-  ops.forEach(([titulo, resp], i) =>
-    db.prepare('INSERT INTO oportunidades (ocorrencia_id, ordem, titulo, responsavel) VALUES (?, ?, ?, ?)').run(oc, i + 1, titulo, resp));
+  for (let i = 0; i < ops.length; i++) {
+    const [titulo, resp] = ops[i];
+    await db.prepare('INSERT INTO oportunidades (ocorrencia_id, ordem, titulo, responsavel) VALUES (?, ?, ?, ?)').run(oc, i + 1, titulo, resp);
+  }
   const setDom = [['Para que Entre o Rei da Glória', 'G'], ['Jesus em Tua Presença', 'D'], ['Não Há Deus Maior', 'D']];
-  setDom.forEach(([t, tom], i) =>
-    db.prepare('INSERT INTO repertorio (ocorrencia_id, musica_id, ordem, tom) VALUES (?, ?, ?, ?)').run(oc, musIds[t], i + 1, tom));
+  for (let i = 0; i < setDom.length; i++) {
+    const [t, tom] = setDom[i];
+    await db.prepare('INSERT INTO repertorio (ocorrencia_id, musica_id, ordem, tom) VALUES (?, ?, ?, ?)').run(oc, musIds[t], i + 1, tom);
+  }
 
-  db.prepare('INSERT INTO avisos (ministerio_id, titulo, mensagem, criado_por, criado_em) VALUES (?, ?, ?, ?, ?)').run(
-    louvor, 'Ensaio geral sábado 17h', 'Ensaio do repertório de domingo. Chegar 15 min antes.', uViviane, agora);
-  db.prepare('INSERT INTO avisos (ministerio_id, titulo, mensagem, criado_por, criado_em) VALUES (?, ?, ?, ?, ?)').run(
-    null, 'Bem-vindos ao Aclame!', 'Confirmem as escalas pelo app e mantenham suas disponibilidades em dia.', uEvandro, agora);
+  (await db.prepare('INSERT INTO avisos (ministerio_id, titulo, mensagem, criado_por, criado_em) VALUES (?, ?, ?, ?, ?)').run(
+    louvor, 'Ensaio geral sábado 17h', 'Ensaio do repertório de domingo. Chegar 15 min antes.', uViviane, agora));
+  (await db.prepare('INSERT INTO avisos (ministerio_id, titulo, mensagem, criado_por, criado_em) VALUES (?, ?, ?, ?, ?)').run(
+    null, 'Bem-vindos ao Aclame!', 'Confirmem as escalas pelo app e mantenham suas disponibilidades em dia.', uEvandro, agora));
 }
 
 // Auxiliares musicais simples para o seed (I, IV, V, vi do campo harmônico maior).
@@ -536,6 +561,7 @@ function proximoDia(diaSemana) {
 }
 
 module.exports = {
-  abrir, seedDemo, estaVazio, agoraISO, hojeISO, SCHEMA, VERSAO_SCHEMA,
+  abrir, abrirTeste, encerrarTestes, prepararSchema, seedDemo, estaVazio, agoraISO, hojeISO,
+  SCHEMA: SCHEMA_PG, VERSAO_SCHEMA,
   criarUsuario, conferirSenha, hashSenha, gerarSal, normalizarChave, proximoDia,
 };

@@ -1,10 +1,20 @@
 # 🙌 Aclame
 
-App local de **escalas, louvor e voluntariado** para a sua igreja. Sem nuvem, sem mensalidade: roda na sua máquina, com os dados num arquivo SQLite.
+App de **escalas, louvor e voluntariado** para a sua igreja. Nuvem 100% gratuita: banco **PostgreSQL no Supabase**, aplicação rodando como função serverless na **Vercel**.
 
-## Como usar
+## Rodando localmente (desenvolvimento)
 
-**Duplo clique em `iniciar.bat`.** O servidor sobe e o navegador abre em `http://localhost:3000`. Na primeira execução são criados dados de demonstração.
+Requer um PostgreSQL acessível (o mais simples é instalar localmente — veja `NUVEM-PASSO-A-PASSO.md` se preferir usar o Supabase já em dev).
+
+```bash
+npm install
+npm test                 # roda os 56 testes num schema Postgres efêmero (autoisolado, some sozinho)
+PORT=3000 node server.js # sobe o servidor em http://localhost:3000
+```
+
+Sem a variável `PGURL` definida, o servidor usa `postgres://aclame:aclame@127.0.0.1:5432/aclame` por padrão (veja `.env.example`).
+
+**Dados de demonstração**: `ACLAME_SEED=1 node server.js` (só roda se o banco estiver vazio).
 
 **Usuários de demonstração** (senha `1234`):
 
@@ -16,9 +26,13 @@ App local de **escalas, louvor e voluntariado** para a sua igreja. Sem nuvem, se
 | Kelly | `kelly@aclame.local` | Membro |
 | Clarianne | `clarianne@aclame.local` | Membro |
 
-Para começar do zero, apague `voluts.db` (e remova `--seed` do `iniciar.bat` se não quiser a demo). O primeiro usuário que se registrar num banco vazio vira administrador.
+O primeiro usuário que se registrar num banco vazio vira administrador automaticamente.
 
-**Dados reais**: `node seed-real.js` (com o servidor parado) recria o banco com a escala real de julho/2026 — o banco anterior é arquivado como `voluts.db.demo.bak` e as contas reais (não-demo) são preservadas com as mesmas senhas.
+**Dados reais**: `PGURL=... node seed-real.js --force` recria o banco com a escala real de julho/2026 — as contas reais (não-demo) já cadastradas são preservadas com as mesmas senhas antes do reset. Sem `--force`, o comando recusa rodar se o banco já tiver dados (proteção contra apagar por engano).
+
+## Deploy na nuvem (Supabase + Vercel, gratuito)
+
+Passo a passo completo para quem não é programador: **`NUVEM-PASSO-A-PASSO.md`**.
 
 ## Funcionalidades
 
@@ -107,10 +121,11 @@ Para começar do zero, apague `voluts.db` (e remova `--seed` do `iniciar.bat` se
 
 ## Técnica
 
-- Node.js ≥ 22.5, **zero dependências npm** (`node:http`, `node:sqlite`, `node:crypto`).
+- Node.js ≥ 22.5. Backend em `node:http` puro (sem framework) + `pg` como única dependência npm.
+- **PostgreSQL (Supabase, plano gratuito)** — `pg-core.js` é um adaptador que dá ao driver `pg` a mesma interface de `db.prepare(sql).run/get/all()` do antigo `node:sqlite`, porém assíncrona.
+- **Vercel (plano gratuito)** — `server.js` exporta `criarHandler(db)` (função HTTP pura, sem `.listen()`), usada por `api/[[...path]].js` como função serverless. `criarServidor(db)` continua existindo para uso local/testes (`http.createServer` de verdade). Arquivos de `public/` são servidos diretamente pela Vercel, sem passar pela função.
 - Senhas com scrypt + sal; sessão via cookie httpOnly (30 dias).
-- Banco `voluts.db` criado automaticamente; bancos de versões antigas são arquivados como `.bak`.
+- Schema criado/migrado automaticamente na primeira conexão (`prepararSchema`, controlado pela tabela `schema_meta` — substitui o antigo `PRAGMA user_version` do SQLite).
 - Backup: `GET /api/export` (admin) — dados sem credenciais.
-- Testes: `node --test` (56 testes: motor, trocas, painel de trocas, avaliação de compromisso, pendências, setlist, convites com expiração, roteiro, transposição, API/permissões, migração).
-- Migração automática de schema: bancos v2 são atualizados no lugar, sem perder dados.
+- Testes: `node --test` (56 testes) — cada teste abre um **schema Postgres efêmero** (`abrirTeste()`, equivalente ao antigo `:memory:`), descartado sozinho no `db.close()`. Roda contra `PGURL_TESTE` (padrão: banco local `aclame_test`), nunca contra dados de produção.
 - Atalho de teste: `http://localhost:3000/?entrar=evandro@aclame.local:1234#/dashboard` faz login automático.

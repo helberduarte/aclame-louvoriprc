@@ -1,15 +1,13 @@
 'use strict';
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { DatabaseSync } = require('node:sqlite');
-const { SCHEMA } = require('../db');
+const { abrirTeste, encerrarTestes } = require('../db');
 const { criarServidor } = require('../server');
 
 let servidor, base, db;
 
 before(async () => {
-  db = new DatabaseSync(':memory:');
-  db.exec(SCHEMA);
+  db = await abrirTeste();
   servidor = criarServidor(db);
   await new Promise((ok) => servidor.listen(0, ok));
   base = `http://localhost:${servidor.address().port}`;
@@ -40,7 +38,7 @@ test('API v5: convite expira em 7 dias, com URL e validade expostas', async () =
 
   // Lista marca disponíveis e expirados, e expõe a URL para copiar/WhatsApp.
   const c2 = await http('POST', '/api/convites', {}, adm.token);
-  db.prepare("UPDATE convites SET criado_em = '2026-01-01 10:00:00' WHERE token = ?").run(c2.json.token);
+  (await db.prepare("UPDATE convites SET criado_em = '2026-01-01 10:00:00' WHERE token = ?").run(c2.json.token));
   const lista = await http('GET', '/api/convites', null, adm.token);
   const l1 = lista.json.find((c) => c.token === c1.json.token);
   const l2 = lista.json.find((c) => c.token === c2.json.token);
@@ -71,3 +69,5 @@ test('API v5: /api/musicas expõe a contagem de versões salvas', async () => {
   const depois = await http('GET', '/api/musicas', null, adm.token);
   assert.equal(depois.json.find((m) => m.id === alvo.id).versoes, 1, 'contagem reflete a versão criada');
 });
+
+after(async () => { await encerrarTestes(); });

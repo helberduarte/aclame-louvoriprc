@@ -1,15 +1,13 @@
 'use strict';
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { DatabaseSync } = require('node:sqlite');
-const { SCHEMA } = require('../db');
+const { abrirTeste, encerrarTestes } = require('../db');
 const { criarServidor } = require('../server');
 
 let servidor, base;
 
 before(async () => {
-  const db = new DatabaseSync(':memory:');
-  db.exec(SCHEMA);
+  const db = await abrirTeste();
   servidor = criarServidor(db);
   await new Promise((ok) => servidor.listen(0, ok));
   base = `http://localhost:${servidor.address().port}`;
@@ -269,3 +267,5 @@ test('estante: dedupe, convite WhatsApp e estatísticas', async () => {
   const dash = await api('GET', '/api/dashboard', null, adm.cookie);
   assert.ok(dash.json.kpis.voluntarios_ativos >= 17);
 });
+
+after(async () => { await encerrarTestes(); });
