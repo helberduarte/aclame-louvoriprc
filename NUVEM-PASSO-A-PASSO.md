@@ -108,6 +108,16 @@ administrador no seu lugar (e você precisaria corrigir isso manualmente no banc
   **Transaction pooler** (porta `6543`), não a "Direct connection" (porta `5432`) — a
   conexão direta não aguenta o padrão de uma função serverless que abre/fecha conexões
   o tempo todo, e vai esgotar rápido.
+- **Erro "tenant/user not found" ao conectar**: o host do pooler está errado na string.
+  Não digite de memória — copie a string inteira do painel do Supabase (o prefixo
+  `aws-1`/`aws-0` varia por projeto e um dígito errado cai em outro pooler).
+- **Build falha com "No entrypoint found"**: o Framework Preset do projeto na Vercel
+  está como "Node" (modo que exige um servidor com `.listen()` e ignora a pasta `api/`).
+  Corrija em Project Settings → Build and Deployment → Framework Preset → **"Other"**,
+  e depois faça Redeploy. Esta configuração vive no painel da Vercel, não no repositório.
+- **Rotas `/api/algo/coisa` retornam 404 da Vercel** (mas `/api/algo` funciona): a
+  convenção de arquivo `api/[[...path]].js` não cobre 2+ segmentos sozinha neste setup —
+  o `vercel.json` precisa do bloco `rewrites` que já está no repositório. Não remova.
 - **Login não funciona**: confira se rodou a Parte 4 (`seed-real.js`) apontando para o
   `PGURL` de produção — sem isso o banco do Supabase está vazio.
 - Para qualquer outro erro, peça ao Claude Code: **"veja os logs da função na Vercel
