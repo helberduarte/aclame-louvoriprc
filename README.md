@@ -9,12 +9,12 @@ Requer um PostgreSQL acessível (o mais simples é instalar localmente — veja 
 ```bash
 npm install
 npm test                 # roda os 56 testes num schema Postgres efêmero (autoisolado, some sozinho)
-PORT=3000 node app-core.js # sobe o servidor em http://localhost:3000
+PORT=3000 node scripts/dev.js # sobe o servidor em http://localhost:3000
 ```
 
 Sem a variável `PGURL` definida, o servidor usa `postgres://aclame:aclame@127.0.0.1:5432/aclame` por padrão (veja `.env.example`).
 
-**Dados de demonstração**: `ACLAME_SEED=1 node app-core.js` (só roda se o banco estiver vazio).
+**Dados de demonstração**: `ACLAME_SEED=1 node scripts/dev.js` (só roda se o banco estiver vazio).
 
 **Usuários de demonstração** (senha `1234`):
 
@@ -123,7 +123,7 @@ Passo a passo completo para quem não é programador: **`NUVEM-PASSO-A-PASSO.md`
 
 - Node.js ≥ 22.5. Backend em `node:http` puro (sem framework) + `pg` como única dependência npm.
 - **PostgreSQL (Supabase, plano gratuito)** — `pg-core.js` é um adaptador que dá ao driver `pg` a mesma interface de `db.prepare(sql).run/get/all()` do antigo `node:sqlite`, porém assíncrona.
-- **Vercel (plano gratuito)** — `app-core.js` exporta `criarHandler(db)` (função HTTP pura, sem `.listen()`), usada por `api/[[...path]].js` como função serverless. `criarServidor(db)` continua existindo para uso local/testes (`http.createServer` de verdade). ⚠️ O arquivo NÃO se chama `server.js`/`server.mjs` de propósito: a Vercel reserva esse nome exato na raiz do projeto para uma convenção própria de "servidor capturado" que ignora a pasta `api/` — nomear com esse padrão quebra o deploy. Arquivos de `public/` são servidos diretamente pela Vercel, sem passar pela função.
+- **Vercel (plano gratuito)** — `app-core.js` exporta só `{ criarHandler, criarServidor }`, sem nenhuma chamada `.listen()` na raiz do projeto. `api/[[...path]].js` usa `criarHandler(db)` como função serverless. O bootstrap de desenvolvimento local (quem chama `.listen()` de fato) mora em `scripts/dev.js`, **de propósito fora da raiz e fora de `src/`**: a Vercel varre esses dois locais à procura de um arquivo-servidor para "capturar" como entrypoint único, ignorando a pasta `api/` inteira quando encontra um — já aconteceu duas vezes neste projeto (primeiro com `server.js`, depois mesmo após renomear para `app-core.js`, porque o `.listen()` continuava na raiz). Arquivos de `public/` são servidos diretamente pela Vercel, sem passar pela função.
 - Senhas com scrypt + sal; sessão via cookie httpOnly (30 dias).
 - Schema criado/migrado automaticamente na primeira conexão (`prepararSchema`, controlado pela tabela `schema_meta` — substitui o antigo `PRAGMA user_version` do SQLite).
 - Backup: `GET /api/export` (admin) — dados sem credenciais.

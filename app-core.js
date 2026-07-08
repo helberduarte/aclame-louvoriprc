@@ -1004,7 +1004,8 @@ function criarHandler(db) {
   };
 }
 
-// Wrapper para uso local/testes: http.Server de verdade, com .listen().
+// Wrapper para uso local/testes: devolve um http.Server de verdade (chame o método
+// que sobe o servidor você mesmo — ver scripts/dev.js).
 function criarServidor(db) {
   return http.createServer(criarHandler(db));
 }
@@ -1030,21 +1031,6 @@ function lerCorpo(req) {
 function responder(res, status, obj, headers = {}) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', ...headers });
   res.end(JSON.stringify(obj ?? null));
-}
-
-if (require.main === module) {
-  (async () => {
-    const db = await abrir(process.env.PGURL);
-    if ((await estaVazio(db)) && (process.argv.includes('--seed') || process.env.ACLAME_SEED === '1')) {
-      (await seedDemo(db));
-      (await engine.gerarOcorrencias(db, hojeISO(28)));
-      console.log('Banco vazio: dados de demonstração criados (usuários com senha 1234).');
-    }
-    const porta = Number(process.env.PORT || 3000);
-    criarServidor(db).listen(porta, () => {
-      console.log(`Aclame rodando em http://localhost:${porta}`);
-    });
-  })().catch((e) => { console.error(e); process.exit(1); });
 }
 
 module.exports = { criarServidor, criarHandler };
