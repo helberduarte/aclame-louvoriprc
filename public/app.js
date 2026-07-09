@@ -306,45 +306,11 @@ rota(/^#\/mural$/, async (alvo) => {
     api('GET', '/api/mural'), api('GET', '/api/ministerios'),
     api('GET', `/api/aniversariantes?mes=${mesAtual}`).catch(() => []),
   ]);
-  cabecalho(alvo, 'Mural da igreja', 'Escalas publicadas e avisos — tudo num só lugar.',
+  cabecalho(alvo, 'Mural', 'Escalas publicadas e avisos — tudo num só lugar.',
     ehLider() ? '<button class="botao primario" id="btn-aviso">+ Aviso</button>' : '');
   if (ehLider()) document.getElementById('btn-aviso').onclick = () => formAviso(ministerios);
 
-  const hoje = hojeISO();
-  if (!mural.cultos.length) alvo.insertAdjacentHTML('beforeend', '<p class="vazio">Nenhum culto publicado ainda.</p>');
-  for (const c of mural.cultos) {
-    const passado = c.data < hoje;
-    const card = document.createElement('div');
-    card.className = 'cartao cartao-clicavel';
-    if (passado) card.style.opacity = '.65';
-    card.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
-        <div>
-          <strong>🛑 CULTO ${fmtData(c.data).toUpperCase()}</strong> — ${esc(c.evento_nome)}
-          ${c.tema ? `<span class="selo destaque">${esc(c.tema)}</span>` : ''}
-          ${passado ? '<span class="selo neutro">realizado</span>' : ''}
-          <div class="meta">${esc(c.local_nome || '')} · ${c.hora_inicio} ${c.responsavel ? '· 🎯 ' + esc(c.responsavel) : ''} ${c.pregador ? '· 📖 ' + esc(c.pregador) : ''}</div>
-        </div>
-        <div style="text-align:right">
-          <span class="selo neutro">${c.escalados} escalado(s)</span>
-          <div class="autoria">publicado por <strong>${esc(c.publicada_por_nome || '—')}</strong> · ${fmtDataHora(c.publicada_em)}</div>
-        </div>
-      </div>`;
-    card.onclick = () => { location.hash = `#/culto/${c.id}`; };
-    alvo.appendChild(card);
-  }
-
-  // Aniversariantes do mês
-  if (anivs.length) {
-    const NOMES_MES = ['', 'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
-    alvo.insertAdjacentHTML('beforeend', `<h2>🎂 Aniversariantes de ${NOMES_MES[mesAtual]}</h2>
-      <div class="cartao">${anivs.map((a) => `<div class="item-lista">
-        <strong>${esc(a.nome)}</strong> — ${String(a.dia).padStart(2, '0')} de ${NOMES_MES[a.mes]}
-        <span class="selo ${a.dias_ate === 0 ? 'confirmado' : 'neutro'}">${
-          a.dias_ate === 0 ? '🎉 é hoje!' : a.dias_ate > 0 && a.dias_ate <= 60 ? `daqui a ${a.dias_ate} dia(s)` : 'já passou este ano'
-        }</span></div>`).join('')}</div>`);
-  }
-
+  // Avisos primeiro (antes da grade de cultos).
   alvo.insertAdjacentHTML('beforeend', '<h2>Avisos</h2>');
   const nomeMin = (id) => ministerios.find((x) => x.id === id)?.nome;
   if (!mural.avisos.length) alvo.insertAdjacentHTML('beforeend', '<p class="vazio">Nenhum aviso.</p>');
@@ -366,7 +332,96 @@ rota(/^#\/mural$/, async (alvo) => {
     if (!btn) return;
     if (await tentar(() => api('DELETE', `/api/avisos/${btn.dataset.delAviso}`), 'Aviso excluído.')) navegar();
   });
+
+  // Aniversariantes do mês
+  if (anivs.length) {
+    const NOMES_MES = ['', 'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+    alvo.insertAdjacentHTML('beforeend', `<h2>🎂 Aniversariantes de ${NOMES_MES[mesAtual]}</h2>
+      <div class="cartao">${anivs.map((a) => `<div class="item-lista">
+        <strong>${esc(a.nome)}</strong> — ${String(a.dia).padStart(2, '0')} de ${NOMES_MES[a.mes]}
+        <span class="selo ${a.dias_ate === 0 ? 'confirmado' : 'neutro'}">${
+          a.dias_ate === 0 ? '🎉 é hoje!' : a.dias_ate > 0 && a.dias_ate <= 60 ? `daqui a ${a.dias_ate} dia(s)` : 'já passou este ano'
+        }</span></div>`).join('')}</div>`);
+  }
+
+  // Cultos — grade de calendário mensal (substitui a lista cronológica).
+  alvo.insertAdjacentHTML('beforeend', '<h2>Escalas publicadas</h2>');
+  if (!mural.cultos.length) {
+    alvo.insertAdjacentHTML('beforeend', '<p class="vazio">Nenhum culto publicado ainda.</p>');
+  } else {
+    const contCal = document.createElement('div');
+    alvo.appendChild(contCal);
+    const mesBase = alvo.dataset.mesMural ? new Date(alvo.dataset.mesMural + '-15T12:00:00') : new Date();
+    renderMuralCalendario(contCal, mesBase, mural.cultos, alvo);
+  }
 });
+
+// A API de /api/mural não filtra por mês (devolve tudo já publicado); o
+// filtro por mês é só client-side, sem refetch — os dados já estão em mãos.
+function renderMuralCalendario(cont, mesBase, cultos, alvoPai) {
+  const ano = mesBase.getFullYear(), mes = mesBase.getMonth();
+  const nomeMes = mesBase.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  const p2 = (n) => String(n).padStart(2, '0');
+  const primeiroDia = new Date(ano, mes, 1).getDay();
+  const diasNoMes = new Date(ano, mes + 1, 0).getDate();
+  const hoje = hojeISO();
+
+  const porDia = {};
+  for (const c of cultos) (porDia[c.data] ||= []).push(c);
+  // Dentro do dia, o "mais recente" é o publicado por último (mais novo no mural).
+  for (const lista of Object.values(porDia)) lista.sort((a, b) => (b.publicada_em || '').localeCompare(a.publicada_em || ''));
+
+  let grade = DIAS.map((d) => `<div class="cal-dia-nome">${d.slice(0, 3)}</div>`).join('');
+  for (let i = 0; i < primeiroDia; i++) grade += '<div class="cal-dia fora"></div>';
+  for (let d = 1; d <= diasNoMes; d++) {
+    const iso = `${ano}-${p2(mes + 1)}-${p2(d)}`;
+    const doDia = porDia[iso] || [];
+    const principal = doDia[0];
+    const extra = doDia.length - 1;
+    const passado = iso < hoje;
+    grade += `<div class="cal-dia ${principal ? 'tem-culto' : ''} ${passado ? 'passado' : ''} ${iso === hoje ? 'hoje' : ''}"
+      data-dia="${principal ? iso : ''}">
+      ${d}
+      ${principal ? `<span class="cal-culto-info">${principal.hora_inicio} ${esc(principal.evento_nome)}</span>` : ''}
+      ${extra > 0 ? `<span class="cal-badge-mais">+${extra}</span>` : ''}
+    </div>`;
+  }
+  cont.innerHTML = `<div class="cartao">
+    <div class="cal-cab">
+      <button class="botao mini" id="mural-cal-ant">← anterior</button>
+      <strong style="text-transform:capitalize">${esc(nomeMes)}</strong>
+      <button class="botao mini" id="mural-cal-prox">próximo →</button>
+    </div>
+    <div class="cal-grade">${grade}</div>
+  </div>`;
+
+  const trocarMes = (delta) => {
+    const novo = new Date(ano, mes + delta, 15);
+    alvoPai.dataset.mesMural = `${novo.getFullYear()}-${p2(novo.getMonth() + 1)}`;
+    renderMuralCalendario(cont, novo, cultos, alvoPai);
+  };
+  cont.querySelector('#mural-cal-ant').onclick = () => trocarMes(-1);
+  cont.querySelector('#mural-cal-prox').onclick = () => trocarMes(1);
+  cont.querySelector('.cal-grade').addEventListener('click', (e) => {
+    const dia = e.target.closest('.cal-dia');
+    if (!dia || !dia.dataset.dia) return;
+    abrirModalDiaMural(dia.dataset.dia, porDia[dia.dataset.dia]);
+  });
+}
+
+function abrirModalDiaMural(iso, cultosDoDia) {
+  const m = abrirModal(`<h2>${fmtData(iso)}</h2>
+    ${cultosDoDia.map((c) => `<div class="cartao cartao-clicavel" data-ir-culto="${c.id}">
+      <strong>${esc(c.evento_nome)}</strong> ${c.tema ? `<span class="selo destaque">${esc(c.tema)}</span>` : ''}
+      <div class="meta">${esc(c.local_nome || '')} · ${c.hora_inicio} ${c.responsavel ? '· 🎯 ' + esc(c.responsavel) : ''} ${c.pregador ? '· 📖 ' + esc(c.pregador) : ''}</div>
+      <span class="selo neutro">${c.escalados} escalado(s)</span>
+      <div class="autoria">publicado por <strong>${esc(c.publicada_por_nome || '—')}</strong> · ${fmtDataHora(c.publicada_em)}</div>
+    </div>`).join('')}
+    <div class="form-acoes"><button class="botao" onclick="fecharModal()">Fechar</button></div>`);
+  m.querySelectorAll('[data-ir-culto]').forEach((el) => {
+    el.onclick = () => { fecharModal(); location.hash = `#/culto/${el.dataset.irCulto}`; };
+  });
+}
 
 function formAviso(ministerios) {
   const m = abrirModal(`<h2>Novo aviso</h2>
