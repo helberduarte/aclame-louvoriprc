@@ -533,15 +533,28 @@ rota(/^#\/culto\/(\d+)$/, async (alvo, id) => {
   }
 
   // ---------- Timeline do roteiro ----------
+  // Checkbox de concluído + etiqueta livre por item: recorte pequeno, só
+  // localStorage (sem tabela nova / sem API) — não é compartilhado entre
+  // pessoas ou dispositivos, é uma marcação pessoal de quem está usando.
   const rot = document.createElement('div');
   rot.className = 'roteiro';
   rot.style.marginTop = '8px';
-  const item = (ico, titulo, corpoHtml = '', acoesHtml = '') => `
-    <div class="rot-item"><div class="rot-ico">${ico}</div>
+  let idxItemRoteiro = 0;
+  const chaveItemRoteiro = (idx) => `aclame_roteiro_${id}_${idx}`;
+  const item = (ico, titulo, corpoHtml = '', acoesHtml = '') => {
+    const meuIdx = idxItemRoteiro++;
+    return `
+    <div class="rot-item" data-item="${meuIdx}"><div class="rot-ico">${ico}</div>
       <div class="rot-corpo"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
-        <div style="flex:1"><div class="rot-titulo">${titulo}</div>${corpoHtml}</div>
+        <div style="flex:1"><div class="rot-titulo">${titulo}</div>${corpoHtml}
+          <div class="rot-check">
+            <label><input type="checkbox" data-check="${meuIdx}"> Concluído</label>
+            <input type="text" class="rot-etiqueta" data-etiqueta="${meuIdx}" placeholder="Etiqueta (opcional)" maxlength="40">
+          </div>
+        </div>
         <div style="display:flex;gap:6px">${acoesHtml}</div>
       </div></div></div>`;
+  };
   const NUM = ['0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
 
   let html = '';
@@ -569,6 +582,32 @@ rota(/^#\/culto\/(\d+)$/, async (alvo, id) => {
   if (oc.responsavel) html += item('🎯', 'Responsabilidade do culto', `<div>${esc(oc.responsavel)}</div>`);
   if (oc.observacoes) html += item('📝', 'Observações', `<div style="white-space:pre-wrap">${esc(oc.observacoes)}</div>`);
   rot.innerHTML = html;
+  rot.querySelectorAll('.rot-item').forEach((elItem) => {
+    const idx = elItem.dataset.item;
+    const salvo = JSON.parse(localStorage.getItem(chaveItemRoteiro(idx)) || '{}');
+    const cb = elItem.querySelector('[data-check]');
+    const inp = elItem.querySelector('[data-etiqueta]');
+    cb.checked = !!salvo.feito;
+    inp.value = salvo.etiqueta || '';
+    elItem.classList.toggle('feito', cb.checked);
+  });
+  rot.addEventListener('change', (e) => {
+    const cb = e.target.closest('[data-check]');
+    if (!cb) return;
+    const idx = cb.dataset.check;
+    const atual = JSON.parse(localStorage.getItem(chaveItemRoteiro(idx)) || '{}');
+    atual.feito = cb.checked;
+    localStorage.setItem(chaveItemRoteiro(idx), JSON.stringify(atual));
+    cb.closest('.rot-item').classList.toggle('feito', cb.checked);
+  });
+  rot.addEventListener('input', (e) => {
+    const inp = e.target.closest('[data-etiqueta]');
+    if (!inp) return;
+    const idx = inp.dataset.etiqueta;
+    const atual = JSON.parse(localStorage.getItem(chaveItemRoteiro(idx)) || '{}');
+    atual.etiqueta = inp.value;
+    localStorage.setItem(chaveItemRoteiro(idx), JSON.stringify(atual));
+  });
   alvo.appendChild(rot);
 
   // ---------- Escala por função ----------
@@ -921,13 +960,75 @@ rota(/^#\/agenda$/, async (alvo) => {
       if (await tentar(() => api('POST', `/api/voluntarios/${meuVol()}/termo`), 'Termo aceito. Obrigado por servir!')) navegar();
     };
   }
-  if (!agenda.length) alvo.insertAdjacentHTML('beforeend', '<p class="vazio">Você não tem escalas futuras.</p>');
+  if (!agenda.length) {
+    alvo.insertAdjacentHTML('beforeend', '<p class="vazio">Você não tem escalas futuras.</p>');
+    return;
+  }
+  const contCal = document.createElement('div');
+  alvo.appendChild(contCal);
+  const mesBase = alvo.dataset.mesAgenda ? new Date(alvo.dataset.mesAgenda + '-15T12:00:00') : new Date();
+  renderAgendaCalendario(contCal, mesBase, agenda, alvo);
+});
+
+// Mesmo padrão de grade mensal do Mural (renderMuralCalendario) — client-side,
+// sem refetch por mês (a agenda inteira já veio numa chamada só).
+function renderAgendaCalendario(cont, mesBase, agenda, alvoPai) {
+  const ano = mesBase.getFullYear(), mes = mesBase.getMonth();
+  const nomeMes = mesBase.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  const p2 = (n) => String(n).padStart(2, '0');
+  const primeiroDia = new Date(ano, mes, 1).getDay();
+  const diasNoMes = new Date(ano, mes + 1, 0).getDate();
   const hoje = hojeISO();
-  for (const a of agenda) {
-    const ehHoje = a.data === hoje;
-    const card = document.createElement('div');
-    card.className = 'cartao';
-    card.innerHTML = `
+
+  const porDia = {};
+  for (const a of agenda) (porDia[a.data] ||= []).push(a);
+
+  let grade = DIAS.map((d) => `<div class="cal-dia-nome">${d.slice(0, 3)}</div>`).join('');
+  for (let i = 0; i < primeiroDia; i++) grade += '<div class="cal-dia fora"></div>';
+  for (let d = 1; d <= diasNoMes; d++) {
+    const iso = `${ano}-${p2(mes + 1)}-${p2(d)}`;
+    const doDia = porDia[iso] || [];
+    const principal = doDia[0];
+    const extra = doDia.length - 1;
+    const passado = iso < hoje;
+    grade += `<div class="cal-dia ${principal ? 'tem-culto' : ''} ${passado ? 'passado' : ''} ${iso === hoje ? 'hoje' : ''}"
+      data-dia="${principal ? iso : ''}">
+      ${d}
+      ${principal ? `<span class="cal-culto-info">${principal.hora_inicio} ${esc(principal.funcao_nome)}</span>` : ''}
+      ${extra > 0 ? `<span class="cal-badge-mais">+${extra}</span>` : ''}
+    </div>`;
+  }
+  cont.innerHTML = `<div class="cartao">
+    <div class="cal-cab">
+      <button class="botao mini" id="agenda-cal-ant">← anterior</button>
+      <strong style="text-transform:capitalize">${esc(nomeMes)}</strong>
+      <button class="botao mini" id="agenda-cal-prox">próximo →</button>
+    </div>
+    <div class="cal-grade">${grade}</div>
+  </div>`;
+
+  const trocarMes = (delta) => {
+    const novo = new Date(ano, mes + delta, 15);
+    alvoPai.dataset.mesAgenda = `${novo.getFullYear()}-${p2(novo.getMonth() + 1)}`;
+    renderAgendaCalendario(cont, novo, agenda, alvoPai);
+  };
+  cont.querySelector('#agenda-cal-ant').onclick = () => trocarMes(-1);
+  cont.querySelector('#agenda-cal-prox').onclick = () => trocarMes(1);
+  cont.querySelector('.cal-grade').addEventListener('click', (e) => {
+    const dia = e.target.closest('.cal-dia');
+    if (!dia || !dia.dataset.dia) return;
+    abrirModalDiaAgenda(dia.dataset.dia, porDia[dia.dataset.dia]);
+  });
+}
+
+// Ações (Confirmar/Recusar/Check-in/Pedir troca/Avaliar/Roteiro) idênticas às
+// que existiam na lista cronológica — só migraram pra dentro do modal do dia,
+// porque #modal fica fora do container onde a rota delega os cliques.
+function abrirModalDiaAgenda(iso, itensDoDia) {
+  const hoje = hojeISO();
+  const ehHoje = iso === hoje;
+  const cartaoItem = (a) => `
+    <div class="cartao" data-escala="${a.escala_id}">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
         <div>
           <strong><span class="ponto-cor" style="background:${esc(a.cor)}"></span>${esc(a.funcao_nome)}</strong> em ${esc(a.evento_nome)}
@@ -945,28 +1046,31 @@ rota(/^#\/agenda$/, async (alvo) => {
           ${ehHoje ? `<button class="botao mini" data-feedback="${a.ocorrencia_id}">⭐ Avaliar</button>` : ''}
           <button class="botao mini" data-roteiro="${a.ocorrencia_id}">📋 Roteiro</button>
         </div>
-      </div>`;
-    alvo.appendChild(card);
-  }
-  alvo.addEventListener('click', async (e) => {
+      </div>
+    </div>`;
+  const m = abrirModal(`<h2>${fmtData(iso)}</h2>
+    ${itensDoDia.map(cartaoItem).join('')}
+    <div class="form-acoes"><button class="botao" onclick="fecharModal()">Fechar</button></div>`);
+  m.addEventListener('click', async (e) => {
     const btn = e.target.closest('button');
     if (!btn) return;
     if (btn.dataset.confirmar) {
-      if (await tentar(() => api('POST', `/api/escala/${btn.dataset.confirmar}/confirmar`), 'Presença confirmada! +5 pontos 🏆')) navegar();
+      if (await tentar(() => api('POST', `/api/escala/${btn.dataset.confirmar}/confirmar`), 'Presença confirmada! +5 pontos 🏆')) { fecharModal(); navegar(); }
     } else if (btn.dataset.recusar) {
-      if (await tentar(() => api('POST', `/api/escala/${btn.dataset.recusar}/recusar`), 'Escala recusada.')) navegar();
+      if (await tentar(() => api('POST', `/api/escala/${btn.dataset.recusar}/recusar`), 'Escala recusada.')) { fecharModal(); navegar(); }
     } else if (btn.dataset.checkin) {
       const r = await tentar(() => api('POST', `/api/escala/${btn.dataset.checkin}/checkin`));
-      if (r) { toast(r.streak ? 'Check-in! +10 pontos e BÔNUS de sequência +20! 🔥' : 'Check-in feito! +10 pontos 🏆'); navegar(); }
+      if (r) { toast(r.streak ? 'Check-in! +10 pontos e BÔNUS de sequência +20! 🔥' : 'Check-in feito! +10 pontos 🏆'); fecharModal(); navegar(); }
     } else if (btn.dataset.troca) {
       abrirPedidoTroca(btn.dataset.troca, btn.dataset.oc, btn.dataset.funcao, btn.dataset.data);
     } else if (btn.dataset.feedback) {
       abrirFeedback(Number(btn.dataset.feedback));
     } else if (btn.dataset.roteiro) {
+      fecharModal();
       location.hash = `#/culto/${btn.dataset.roteiro}`;
     }
   });
-});
+}
 
 async function abrirPedidoTroca(escalaId, ocorrenciaId, funcaoId, dataCulto) {
   const cands = await api('GET', `/api/ocorrencias/${ocorrenciaId}/candidatos?funcao_id=${funcaoId}`);
