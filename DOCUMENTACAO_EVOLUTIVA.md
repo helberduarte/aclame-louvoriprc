@@ -147,3 +147,34 @@ preview, e eu confirmar via smoke test em produção
 (`aclame-louvoriprc.vercel.app`): HTTP 200, `styles.css`/`app.js` com
 versões novas (`v=8`/`v=9`), funções/classes do Bloco 2 presentes no bundle
 servido, rewrite de `/api/*` intacto.
+
+## Fase 2, Bloco 5 — Cards de voluntários (09/07/2026, branch `feature/cards-voluntarios`)
+
+- `#/voluntarios`: tabela virou grade de cards (`.grade-cartoes`, já
+  existente desde o tema da Fase 2), padrão "toolbar-expandable" citado no
+  briefing: botão "⋯" expande um toolbar (Editar, Ativar/Desativar) via
+  transição de `max-height`/`opacity`, sem sair da lista. Clique no corpo
+  do card continua abrindo o perfil completo, como a linha da tabela antes.
+- "Editar" direto da lista é novo (antes só dava pra editar entrando no
+  perfil) — reaproveita `formVoluntario(v)` já existente, sem mudança de
+  API (campos batem com o que `GET /api/voluntarios` já devolve).
+- Decisão consciente: **não** adicionei um botão de WhatsApp direto no
+  card. O padrão do app sempre gera o link/telefone formatado no servidor
+  (`data-zap` → `/api/escala/:id/whatsapp`); reproduzir isso client-side
+  seria inventar lógica nova de formatação de telefone e, na prática,
+  tocar em API — contra a regra do briefing.
+- CSS novo (`.voluntario-card`, `.avatar-vol`, `.voluntario-toolbar` etc.)
+  só variáveis do tema já existente.
+
+### Verificação deste bloco
+- `node --check public/app.js` OK; CSS balanceado OK.
+- `npm test`: mesma limitação de sempre (sem Postgres local).
+- Preview estático local com instrumentação das chamadas de API: grade com
+  3 voluntários (ativo/inativo/termo pendente), toggle expande/recolhe,
+  Editar abre modal com dados certos, Ativar/Desativar chama
+  `PUT /api/voluntarios/:id` com body correto (`{ativo:0}`) e atualiza a
+  lista, clique no corpo do card navega pro perfil — zero erros de console.
+- Build do preview (commit `a0315c1`) confirmado **success** via API do GitHub.
+
+**Status:** branch `feature/cards-voluntarios` enviada ao GitHub,
+aguardando confirmação visual do Helber antes do merge.

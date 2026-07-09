@@ -166,6 +166,25 @@ h2 { font-size: 16px; margin: 24px 0 10px; }
 
 .grade-cartoes { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
 
+/* ---------- Cards de voluntários (padrão toolbar-expandable) ---------- */
+.voluntario-card { margin-bottom: 0; }
+.voluntario-cabeca { display: flex; align-items: center; gap: 10px; }
+.avatar-vol {
+  width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
+  background: var(--acento); color: var(--acento-contraste);
+  display: flex; align-items: center; justify-content: center; font-weight: 700;
+}
+.voluntario-info { flex: 1; min-width: 0; }
+.voluntario-info strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.voluntario-toggle { flex-shrink: 0; }
+.voluntario-selos { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.voluntario-toolbar {
+  display: flex; gap: 6px; flex-wrap: wrap;
+  max-height: 0; opacity: 0; overflow: hidden;
+  transition: max-height .22s ease, opacity .18s ease, margin-top .22s ease;
+}
+.voluntario-card.expandido .voluntario-toolbar { max-height: 100px; opacity: 1; margin-top: 10px; }
+
 table.tabela { width: 100%; border-collapse: collapse; background: var(--superficie-vidro); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid var(--borda); border-radius: 14px; overflow: hidden; }
 .tabela th { text-align: left; font-weight: 600; color: var(--ink-mudo); font-size: 12.5px; padding: 10px 14px; border-bottom: 1px solid var(--grade); }
 .tabela td { padding: 10px 14px; border-bottom: 1px solid var(--grade); }

@@ -2397,20 +2397,63 @@ rota(/^#\/voluntarios$/, async (alvo) => {
   cabecalho(alvo, '🧑‍🤝‍🧑 Voluntários', 'A equipe da sua igreja.',
     '<button class="botao primario" id="btn-novo">+ Novo voluntário</button>');
   document.getElementById('btn-novo').onclick = () => formVoluntario(null);
-  const tabela = document.createElement('table');
-  tabela.className = 'tabela';
-  tabela.innerHTML = `<thead><tr><th>Nome</th><th>Contato</th><th>Termo</th><th>Status</th></tr></thead><tbody>${
-    vols.map((v) => `<tr class="linha-clicavel" data-id="${v.id}">
-      <td><strong>${esc(v.nome)}</strong></td>
-      <td class="meta">${esc(v.telefone || '')} ${esc(v.email || '')}</td>
-      <td>${v.termo_aceito_em ? '<span class="selo confirmado">aceito</span>' : '<span class="selo aviso">pendente</span>'}</td>
-      <td>${v.ativo ? '<span class="selo confirmado">ativo</span>' : '<span class="selo neutro">inativo</span>'}</td>
-    </tr>`).join('')}</tbody>`;
-  tabela.addEventListener('click', (e) => {
-    const tr = e.target.closest('tr[data-id]');
-    if (tr) location.hash = `#/voluntario/${tr.dataset.id}`;
+
+  // Cards com toolbar expansível (padrão toolbar-expandable): compacto por
+  // padrão, o botão "⋯" revela ações rápidas sem sair da lista. Clicar no
+  // corpo do card continua abrindo o perfil completo, como antes (tabela).
+  const grade = document.createElement('div');
+  grade.className = 'grade-cartoes grade-voluntarios';
+  grade.innerHTML = vols.map((v) => {
+    const inicial = (v.nome || '?').trim().charAt(0).toUpperCase();
+    return `
+    <div class="cartao cartao-clicavel voluntario-card" data-id="${v.id}">
+      <div class="voluntario-cabeca">
+        <div class="avatar-vol">${esc(inicial)}</div>
+        <div class="voluntario-info">
+          <strong>${esc(v.nome)}</strong>
+          <div class="meta">${esc(v.telefone || '')} ${esc(v.email || '')}</div>
+        </div>
+        <button class="botao mini voluntario-toggle" data-toggle-toolbar="${v.id}" aria-label="Mais ações" aria-expanded="false">⋯</button>
+      </div>
+      <div class="voluntario-selos">
+        ${v.termo_aceito_em ? '<span class="selo confirmado">termo aceito</span>' : '<span class="selo aviso">termo pendente</span>'}
+        ${v.ativo ? '<span class="selo confirmado">ativo</span>' : '<span class="selo neutro">inativo</span>'}
+      </div>
+      <div class="voluntario-toolbar">
+        <button class="botao mini" data-editar="${v.id}">✏️ Editar</button>
+        <button class="botao mini ${v.ativo ? 'perigo' : ''}" data-toggle-ativo="${v.id}" data-ativo-atual="${v.ativo ? '1' : '0'}">
+          ${v.ativo ? 'Desativar' : 'Ativar'}
+        </button>
+      </div>
+    </div>`;
+  }).join('');
+  alvo.appendChild(grade);
+
+  grade.addEventListener('click', async (e) => {
+    const toggleBtn = e.target.closest('[data-toggle-toolbar]');
+    const editarBtn = e.target.closest('[data-editar]');
+    const ativoBtn = e.target.closest('[data-toggle-ativo]');
+    const card = e.target.closest('.voluntario-card');
+
+    if (toggleBtn) {
+      const expandido = card.classList.toggle('expandido');
+      toggleBtn.setAttribute('aria-expanded', String(expandido));
+      return;
+    }
+    if (editarBtn) {
+      const v = vols.find((x) => x.id === Number(editarBtn.dataset.editar));
+      formVoluntario(v);
+      return;
+    }
+    if (ativoBtn) {
+      const novoAtivo = ativoBtn.dataset.ativoAtual === '1' ? 0 : 1;
+      if (await tentar(() => api('PUT', `/api/voluntarios/${ativoBtn.dataset.toggleAtivo}`, { ativo: novoAtivo }),
+        novoAtivo ? 'Voluntário ativado.' : 'Voluntário desativado.')) navegar();
+      return;
+    }
+    // Clique no corpo do card (fora do toolbar/toggle) abre o perfil completo.
+    if (card) location.hash = `#/voluntario/${card.dataset.id}`;
   });
-  alvo.appendChild(tabela);
 });
 
 function formVoluntario(v) {
