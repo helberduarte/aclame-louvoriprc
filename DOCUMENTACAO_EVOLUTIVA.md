@@ -176,5 +176,20 @@ servido, rewrite de `/api/*` intacto.
   lista, clique no corpo do card navega pro perfil — zero erros de console.
 - Build do preview (commit `a0315c1`) confirmado **success** via API do GitHub.
 
-**Status:** branch `feature/cards-voluntarios` enviada ao GitHub,
-aguardando confirmação visual do Helber antes do merge.
+**Status:** mergeado em `main` (commit `19aa568`) em 09/07/2026, após o
+Helber confirmar visualmente os cards no preview, e eu confirmar via
+smoke test em produção (`aclame-louvoriprc.vercel.app`): HTTP 200,
+`styles.css`/`app.js` com versões novas (`v=9`/`v=10`), classes/funções do
+Bloco 5 presentes no bundle servido, rewrite de `/api/*` intacto.
+
+---
+
+## Fim da Fase 2 (blocos ativos)
+
+Blocos 1, 2 e 5 concluídos e em produção. Bloco 3 (menu) já estava pronto
+antes desta rodada. Bloco 4 (seção devocional) segue **bloqueado** — não é
+uma pendência de código: falta (1) confirmar os termos de uso da API
+`api.midvash.com` para redistribuição de texto NAA (direitos da SBB) e
+(2) autoria do conteúdo devocional/quiz, que ainda não existe. Não iniciar
+a interface antes de resolver os dois pontos (ver `BRIEFING_FASE2_UX.md`,
+Bloco 4).
