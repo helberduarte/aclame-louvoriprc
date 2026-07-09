@@ -4,7 +4,6 @@
 const estado = { me: null };
 
 const DIAS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-const DIAS_CURTOS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 
 // ===== Utilidades =====
 function esc(s) {
@@ -15,17 +14,22 @@ function hojeISO(desloc = 0) {
   d.setDate(d.getDate() + desloc);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
+// Ajuste global: toda data no app mostra o dia da semana por extenso
+// (ex.: "sábado - 18/07/2026"). fmtDataEHora cobre o par data+hora
+// ("sábado - 18/07/2026 às 08:00h") usado em cultos/escalas/trocas.
 function fmtData(iso) {
   if (!iso) return '';
   const [a, m, d] = iso.split('-').map(Number);
   const dt = new Date(a, m - 1, d);
-  return `${DIAS_CURTOS[dt.getDay()]}, ${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${a}`;
+  return `${DIAS[dt.getDay()].toLowerCase()} - ${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${a}`;
 }
 function fmtDataHora(ts) {
   if (!ts) return '';
   const [data, hora] = ts.split(' ');
-  const [a, m, d] = data.split('-');
-  return `${d}/${m}/${a} ${(hora || '').slice(0, 5)}`;
+  return `${fmtData(data)} ${(hora || '').slice(0, 5)}`;
+}
+function fmtDataEHora(iso, hora) {
+  return `${fmtData(iso)} às ${hora}h`;
 }
 function estrelas(n) { return '★'.repeat(n) + '☆'.repeat(5 - n); }
 
@@ -463,7 +467,7 @@ rota(/^#\/culto\/(\d+)$/, async (alvo, id) => {
      <button class="botao" id="btn-zap">📋 Copiar p/ WhatsApp</button>
      ${btnAvaliar}`;
   cabecalho(alvo, `${esc(oc.evento_nome)} ${oc.tema ? `<span class="selo destaque">${esc(oc.tema)}</span>` : ''}`,
-    `${fmtData(oc.data)} às ${oc.hora_inicio} · ${esc(oc.local_nome || 'sem local')}` +
+    `${fmtDataEHora(oc.data, oc.hora_inicio)} · ${esc(oc.local_nome || 'sem local')}` +
     ` &nbsp; ${autoria(oc.criado_por_nome, oc.criado_em)}` +
     (oc.publicada_em ? ` &nbsp; ${autoria(oc.publicada_por_nome, oc.publicada_em, '📢 publicado')}` : ''),
     botoes);
@@ -1033,7 +1037,7 @@ function abrirModalDiaAgenda(iso, itensDoDia) {
         <div>
           <strong><span class="ponto-cor" style="background:${esc(a.cor)}"></span>${esc(a.funcao_nome)}</strong> em ${esc(a.evento_nome)}
           <span class="selo neutro">${esc(a.local_nome || '')}</span>
-          <div class="meta">${fmtData(a.data)} às ${a.hora_inicio} ${ehHoje ? '· <strong>É HOJE!</strong>' : ''}</div>
+          <div class="meta">${fmtDataEHora(a.data, a.hora_inicio)} ${ehHoje ? '· <strong>É HOJE!</strong>' : ''}</div>
         </div>
         <div class="acoes">
           <span class="selo ${a.status}">${a.status}</span>
@@ -1359,7 +1363,7 @@ rota(/^#\/trocas$/, async (alvo) => {
       alvo.insertAdjacentHTML('beforeend', `<div class="cartao">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
           <div><strong>${esc(t.solicitante_nome)}</strong> pediu para você ficar no lugar como
-            <strong>${esc(t.funcao_nome)}</strong> em ${esc(t.evento_nome)}, ${fmtData(t.data)} às ${t.hora_inicio}
+            <strong>${esc(t.funcao_nome)}</strong> em ${esc(t.evento_nome)}, ${fmtDataEHora(t.data, t.hora_inicio)}
             ${t.motivo ? `<div class="meta">“${esc(t.motivo)}”</div>` : ''}
             ${t.prazo ? `<div class="meta">⏳ responder até ${fmtData(t.prazo)}</div>` : ''}</div>
           <div class="acoes">
@@ -1453,7 +1457,7 @@ async function abrirNovaTroca() {
     <div class="form-linha"><label>Qual escala você quer trocar?</label>
       <select id="nt-escala">${elegiveis.map((a) =>
         `<option value="${a.escala_id}" data-oc="${a.ocorrencia_id}" data-funcao="${a.funcao_id}" data-data="${a.data}">
-          ${esc(a.funcao_nome)} — ${esc(a.evento_nome)}, ${fmtData(a.data)} às ${a.hora_inicio}</option>`).join('')}</select></div>
+          ${esc(a.funcao_nome)} — ${esc(a.evento_nome)}, ${fmtDataEHora(a.data, a.hora_inicio)}</option>`).join('')}</select></div>
     <div class="form-acoes"><button class="botao" onclick="fecharModal()">Cancelar</button>
     <button class="botao primario" id="nt-ok">Continuar</button></div>`);
   m.querySelector('#nt-ok').onclick = () => {
@@ -1467,7 +1471,7 @@ async function abrirEditarTroca(t) {
   const cands = await api('GET', `/api/ocorrencias/${t.ocorrencia_id}/candidatos?funcao_id=${t.funcao_id}`);
   const aptos = cands.filter((c) => c.id !== t.solicitante_id && (c.id === t.destinatario_id || (c.disponivel && !c.conflito && !c.mesmo_culto)));
   const m = abrirModal(`<h2>✏️ Editar troca</h2>
-    <p class="meta">${esc(t.funcao_nome)} em ${esc(t.evento_nome)}, ${fmtData(t.data)} às ${t.hora_inicio}</p>
+    <p class="meta">${esc(t.funcao_nome)} em ${esc(t.evento_nome)}, ${fmtDataEHora(t.data, t.hora_inicio)}</p>
     <div class="form-linha"><label>Tipo</label><select id="et-tipo">
       <option value="aberta" ${t.destinatario_id ? '' : 'selected'}>Aberta — qualquer colega da função pode assumir</option>
       <option value="dirigida" ${t.destinatario_id ? 'selected' : ''} ${aptos.length ? '' : 'disabled'}>Dirigida — pedir a uma pessoa específica</option>
@@ -1595,7 +1599,7 @@ rota(/^#\/notificacoes$/, async (alvo) => {
       for (const oc of pend) {
         alvo.insertAdjacentHTML('beforeend', `<div class="cartao">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
-            <div><strong>${esc(oc.evento_nome)}</strong> — ${fmtData(oc.data)} às ${oc.hora_inicio}
+            <div><strong>${esc(oc.evento_nome)}</strong> — ${fmtDataEHora(oc.data, oc.hora_inicio)}
               <div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">${
                 oc.pendencias.map((pd) => `<span class="selo ${pd.tipo === 'vaga' || pd.tipo === 'louvores' ? 'recusado' : 'aviso'}">${esc(pd.texto)}</span>`).join(' ')
               }</div></div>
@@ -2174,7 +2178,7 @@ rota(/^#\/eventos$/, async (alvo) => {
     eventos.map((ev) => `<tr>
       <td><strong>${esc(ev.nome)}</strong> ${ev.ativo ? '' : '<span class="selo neutro">inativa</span>'}</td>
       <td>${esc(nomeLocal(ev.local_id))}</td>
-      <td>${ev.recorrente ? `Toda ${DIAS[ev.dia_semana]?.toLowerCase()} às ${ev.hora_inicio}` : `${fmtData(ev.data)} às ${ev.hora_inicio}`}</td>
+      <td>${ev.recorrente ? `Toda ${DIAS[ev.dia_semana]?.toLowerCase()} às ${ev.hora_inicio}h` : fmtDataEHora(ev.data, ev.hora_inicio)}</td>
       <td class="meta">${esc(ev.criado_por_nome || '—')}</td>
       <td style="text-align:right">
         <button class="botao mini" data-vagas="${ev.id}">Vagas</button>
