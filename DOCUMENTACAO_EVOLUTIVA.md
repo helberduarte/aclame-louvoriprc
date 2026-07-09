@@ -110,3 +110,36 @@ Helber confirmar visualmente a grade de calendário no preview da Vercel
 direto em produção (`aclame-louvoriprc.vercel.app`): HTTP 200, `styles.css`
 e `app.js` com as versões novas (`v=7`/`v=8`), classes/função do Bloco 1
 presentes no bundle servido, rewrite de `/api/*` intacto.
+
+## Fase 2, Bloco 2 — Agenda em grade + checklist do roteiro (09/07/2026, branch `feature/agenda`)
+
+- `#/agenda`: mesma migração de lista cronológica → grade de calendário
+  mensal (`renderAgendaCalendario`, reaproveitando o padrão do Bloco 1).
+  Clique no dia abre modal (`abrirModalDiaAgenda`) com as escalas do dia e
+  todas as ações que já existiam (Confirmar, Recusar, Check-in, Pedir
+  troca, Avaliar, Roteiro) — migraram pra dentro do modal porque `#modal`
+  fica fora do container onde a rota antiga delegava os cliques.
+- `#/culto/:id` (timeline do roteiro): cada item ganhou checkbox
+  "Concluído" + etiqueta de texto livre — recorte aprovado no briefing
+  (sem quadros/colunas/drag-and-drop/anexos). Estado só em `localStorage`
+  por ocorrência+item (`aclame_roteiro_<id>_<idx>`) — **pessoal, não
+  sincroniza entre pessoas/dispositivos**, porque não foi criada tabela
+  nem endpoint novo (regra do briefing: não tocar em `db.js`/`api/`/schema).
+  Se no futuro isso precisar ser compartilhado entre a equipe, vai exigir
+  uma migração de schema — está fora do escopo desta fase de propósito.
+- CSS novo (`.rot-check`, `.rot-item.feito`) só variáveis do tema já existente.
+
+### Verificação deste bloco
+- `node --check public/app.js` OK; CSS balanceado OK.
+- `npm test`: mesma limitação de sempre (sem Postgres local).
+- Preview estático local: grade com dia único e com múltiplos itens (+1),
+  modal com ações certas por status, clique em Confirmar fecha modal e
+  atualiza a agenda, navegação de mês, checklist marca/desmarca + etiqueta
+  persistindo e sobrevivendo à renavegação — tudo verificado via
+  `preview_snapshot`/`preview_eval` (o `preview_screenshot` deu timeout
+  nesta sessão por motivo à parte, não relacionado ao código) — zero erros
+  de console em todo o fluxo.
+- Build do preview (commit `8921e86`) confirmado **success** via API do GitHub.
+
+**Status:** branch `feature/agenda` enviada ao GitHub, aguardando
+confirmação visual do Helber antes do merge.
