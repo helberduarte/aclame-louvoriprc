@@ -104,5 +104,9 @@ React — descartado; ver `helber-perfil`/`aclame-deploy-vercel` na memória).
   7666d1b 761ba88`) vai falhar — `761ba88` é merge commit (2 pais), precisa
   de `-m 1`. Corrigir se algum dia for realmente executado.
 
-**Status:** branch `feature/mural` (commit `91904b3`) enviada ao GitHub,
-aguardando confirmação visual do Helber no preview antes do merge.
+**Status:** mergeado em `main` (commit `207352b`) em 09/07/2026, após o
+Helber confirmar visualmente a grade de calendário no preview da Vercel
+(login via GitHub — mesma conta de sempre) e eu confirmar via smoke test
+direto em produção (`aclame-louvoriprc.vercel.app`): HTTP 200, `styles.css`
+e `app.js` com as versões novas (`v=7`/`v=8`), classes/função do Bloco 1
+presentes no bundle servido, rewrite de `/api/*` intacto.
