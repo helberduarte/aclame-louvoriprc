@@ -141,5 +141,9 @@ presentes no bundle servido, rewrite de `/api/*` intacto.
   de console em todo o fluxo.
 - Build do preview (commit `8921e86`) confirmado **success** via API do GitHub.
 
-**Status:** branch `feature/agenda` enviada ao GitHub, aguardando
-confirmação visual do Helber antes do merge.
+**Status:** mergeado em `main` (commit `b5ad3b7`) em 09/07/2026, após o
+Helber confirmar visualmente a grade da Agenda e o checklist do roteiro no
+preview, e eu confirmar via smoke test em produção
+(`aclame-louvoriprc.vercel.app`): HTTP 200, `styles.css`/`app.js` com
+versões novas (`v=8`/`v=9`), funções/classes do Bloco 2 presentes no bundle
+servido, rewrite de `/api/*` intacto.
