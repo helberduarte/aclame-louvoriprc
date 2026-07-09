@@ -193,3 +193,32 @@ uma pendência de código: falta (1) confirmar os termos de uso da API
 (2) autoria do conteúdo devocional/quiz, que ainda não existe. Não iniciar
 a interface antes de resolver os dois pontos (ver `BRIEFING_FASE2_UX.md`,
 Bloco 4).
+
+### Bloco 4 — atualização em 09/07/2026: pendência (1) resolvida, (2) segue aberta, feature pausada por falta de escopo
+
+- **Fonte bíblica resolvida por pesquisa**: a Almeida Revista e Corrigida
+  de **1911** é a versão mais recente genuinamente em domínio público em
+  português (confirmado em múltiplas fontes — ver busca desta sessão).
+  Toda tradução posterior (ACF, ARC, NAA, NVI etc.) é protegida por
+  direitos autorais. Existe um projeto open-source
+  ([damarals/biblias](https://github.com/damarals/biblias)) que já
+  disponibiliza a Almeida 1911 em JSON, marcada explicitamente como
+  domínio público (†). Plano técnico (não implementado ainda): empacotar
+  só os versículos usados como JSON estático em `public/` — sem chamada
+  externa em tempo real, sem tocar em `api/`/backend.
+- **YouVersion descartado como fonte de texto**: o Helber sugeriu capturar
+  passagens do YouVersion/Bible.com — recusado, porque as traduções lá
+  hospedadas são majoritariamente protegidas por direitos autorais e o
+  scraping violaria os termos de uso deles. Ficou combinado usar a Almeida
+  1911 para o texto, a partir da referência (livro/capítulo/versículo)
+  que o Helber fornecer.
+- **Pendência (2) ainda aberta**: o app registra `tema` (texto livre) por
+  culto, mas **não existe campo para a passagem bíblica pregada**
+  (livro/capítulo/versículo) — não é algo que dá pra inferir do `tema`
+  sem arriscar incoerência com o que foi pregado de verdade. O Helber
+  pediu que os devocionais sigam exatamente o tema/passagem pregada em
+  cada culto, então dados reais (não genéricos) são necessários.
+- **Decisão do Helber em 09/07/2026: deixar o Bloco 4 fora do projeto por
+  enquanto** — ele não tem clareza ainda de que tema/passagem quer usar
+  como amostra. Nenhum código ou conteúdo foi criado. Retomar quando ele
+  trouxer tema + referência bíblica real de alguns cultos.
