@@ -246,6 +246,17 @@ table.tabela { width: 100%; border-collapse: collapse; background: var(--superfi
   display: block; font-size: 10.5px; color: var(--critico);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 4px;
 }
+.cal-dia.tem-culto { background: var(--acento-suave); border-color: color-mix(in srgb, var(--acento) 45%, transparent); }
+.cal-dia .cal-culto-info {
+  display: block; font-size: 10px; color: var(--ink-2); font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 4px;
+}
+.cal-dia .cal-badge-mais {
+  position: absolute; top: 4px; right: 4px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--critico-fundo); color: #fff;
+  font-size: 9px; font-weight: 700; line-height: 16px; text-align: center;
+}
 .cal-legenda { display: flex; gap: 16px; margin-top: 10px; color: var(--ink-mudo); font-size: 12px; }
 .cal-legenda .cx { display: inline-block; width: 12px; height: 12px; border-radius: 4px; vertical-align: -2px; margin-right: 4px; }
 

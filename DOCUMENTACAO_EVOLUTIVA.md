@@ -52,3 +52,57 @@ Kit de rollback: ver `ROLLBACK.md`. `main`/produção intocadas até merge aprov
 - Verificação visual/funcional via servidor estático local: login, sidebar
   admin, acordeão entre grupos, visão de membro sem vazamento de itens de
   gestão, zero erros de console.
+
+**Status:** mergeado em `main` (commit `761ba88`) em 08/07/2026, aprovado
+pelo Helber após revisão do preview. Produção confirmada no ar (HTTP 200,
+tema/rewrite corretos). Tag de segurança `backup-pre-fase2-20260708-1503`
+enviada ao GitHub (estava só local até então — lacuna fechada em 09/07/2026).
+
+## Fase 2, Bloco 1 — Mural em grade de calendário (09/07/2026, branch `feature/mural`)
+
+Base: `BRIEFING_FASE2_UX.md` (v2, commit `55beca7`), que documenta o estado
+real pós Etapas A/B e corrige uma v1 desatualizada (sem essa v2, um
+prompt anterior enviado por engano teria refeito o redesign do zero em
+React — descartado; ver `helber-perfil`/`aclame-deploy-vercel` na memória).
+
+- `#/mural`: cultos publicados saem da lista cronológica e viram uma grade
+  de calendário mensal (reaproveita o padrão visual/estrutural de
+  `renderDisponibilidade`), com navegação ← anterior / próximo → **sem
+  refetch** — `/api/mural` já devolve tudo, filtro por mês é só client-side
+  (`renderMuralCalendario`, `app.js`).
+- Mais de um culto no mesmo dia: mostra o mais recentemente publicado como
+  miniatura + selo vermelho circular "+N"; clique no dia abre modal
+  (`abrirModalDiaMural`) com todos os cultos daquele dia, cada um clicável
+  para `#/culto/:id`.
+- Avisos passaram a renderizar **antes** da grade de cultos (era o
+  contrário). Título da página: "Mural da igreja" → "Mural" (o subtítulo já
+  estava correto, não mudou).
+- CSS novo (`.tem-culto`, `.cal-culto-info`, `.cal-badge-mais`) reaproveita
+  só variáveis do tema já existente — nenhuma cor nova.
+- Nenhum arquivo de backend tocado (regra do briefing).
+
+### Verificação deste bloco
+- `node --check public/app.js` OK; CSS balanceado OK.
+- `npm test`: mesma limitação de sempre (sem Postgres local) — mudança é só
+  `public/`, sem risco de vazamento no backend.
+- Preview estático local (stub de API, sem tocar produção): grade com
+  múltiplos cultos/dia, badge "+N", modal, clique→navegação, troca de mês,
+  visão de membro sem botões de gestão, responsividade da própria grade
+  (7 colunas fluidas) — tudo com screenshot e zero erro de console.
+- **Limitação encontrada**: a extensão do navegador conectada ficou
+  bloqueada para navegar em domínios `vercel.app`/`vercel.com` nesta sessão
+  (não é a primeira vez — mesma trava já tinha aparecido na Fase 2). Não foi
+  possível confirmar visualmente a URL de preview real da Vercel por conta
+  própria; pedido ao Helber para abrir e confirmar antes do Bloco 2. Build
+  do preview (commit `91904b3`) confirmado **success** via API do GitHub.
+- **Achado, não corrigido (fora de escopo)**: a sidebar (`.sidebar`, largura
+  fixa 236px) não colapsa em mobile — em qualquer tela do app, não só no
+  Mural. Pré-existente às Etapas A/B; a grade de calendário em si já é
+  responsiva (colunas fluidas), o corte vem só da sidebar.
+- **Achado no próprio briefing (não bloqueante para este bloco)**: o comando
+  de rollback total documentado (`git revert --no-commit f396db0 3ac03c1
+  7666d1b 761ba88`) vai falhar — `761ba88` é merge commit (2 pais), precisa
+  de `-m 1`. Corrigir se algum dia for realmente executado.
+
+**Status:** branch `feature/mural` (commit `91904b3`) enviada ao GitHub,
+aguardando confirmação visual do Helber no preview antes do merge.
