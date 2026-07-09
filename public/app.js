@@ -2197,6 +2197,12 @@ rota(/^#\/eventos$/, async (alvo) => {
   });
 });
 
+// Retiros/acampamentos de vários dias viram N celebrações "Data única"
+// (uma por dia), cada uma com escala/roteiro/vagas próprios — mesmo
+// mecanismo já usado e testado para qualquer culto avulso. Sem mudança de
+// schema: só reaproveita POST /api/eventos várias vezes.
+const MAX_DIAS_INTERVALO = 14;
+
 function formEvento(ev, locais) {
   const m = abrirModal(`<h2>${ev ? 'Editar' : 'Nova'} celebração</h2>
     <div class="form-linha"><label>Nome</label><input id="f-nome" value="${esc(ev?.nome || '')}"></div>
@@ -2205,10 +2211,13 @@ function formEvento(ev, locais) {
         ${locais.map((l) => `<option value="${l.id}" ${ev?.local_id === l.id ? 'selected' : ''}>${esc(l.nome)}</option>`).join('')}</select></div>
       <div class="form-linha"><label>Tipo</label><select id="f-rec">
         <option value="1" ${ev?.recorrente !== 0 ? 'selected' : ''}>Semanal</option>
-        <option value="0" ${ev?.recorrente === 0 ? 'selected' : ''}>Data única</option></select></div>
+        <option value="0" ${ev?.recorrente === 0 ? 'selected' : ''}>Data única</option>
+        ${ev ? '' : `<option value="2">Vários dias (retiro/acampamento)</option>`}</select></div>
       <div class="form-linha" id="grupo-dia"><label>Dia da semana</label><select id="f-dia">
         ${DIAS.map((d, i) => `<option value="${i}" ${ev?.dia_semana === i ? 'selected' : ''}>${d}</option>`).join('')}</select></div>
       <div class="form-linha oculto" id="grupo-data"><label>Data</label><input type="date" id="f-data" value="${esc(ev?.data || '')}"></div>
+      <div class="form-linha oculto" id="grupo-data-ini"><label>Data início</label><input type="date" id="f-data-ini"></div>
+      <div class="form-linha oculto" id="grupo-data-fim"><label>Data fim</label><input type="date" id="f-data-fim"></div>
       <div class="form-linha"><label>Hora de início</label><input type="time" id="f-hora" value="${esc(ev?.hora_inicio || '19:00')}"></div>
       <div class="form-linha"><label>Duração (min)</label><input type="number" id="f-dur" value="${ev?.duracao_min || 120}"></div>
       <div class="form-linha" id="grupo-intervalo"><label>Repete a cada (semanas)</label>
@@ -2223,23 +2232,60 @@ function formEvento(ev, locais) {
         <input type="number" id="f-max" min="1" value="${ev?.max_ocorrencias || 10}"></div>
     </div>
     <div class="meta" id="f-preview" style="margin-bottom:10px"></div>
+    <p class="meta oculto" id="f-aviso-intervalo">Cada dia vira uma celebração própria (com escala e roteiro independentes) — depois de salvar, ajuste as vagas de cada dia em "Vagas".</p>
     <div class="form-acoes"><button class="botao" onclick="fecharModal()">Cancelar</button>
     <button class="botao primario" id="f-ok">Salvar</button></div>`);
+
+  // Contagem real via aritmética de datas — independe de qualquer trava de
+  // segurança do gerador abaixo, então a mensagem de erro nunca mente sobre
+  // quantos dias o usuário realmente pediu.
+  function contarDias(ini, fim) {
+    return Math.round((new Date(fim + 'T12:00:00') - new Date(ini + 'T12:00:00')) / 86400000) + 1;
+  }
+  function diasDoIntervalo(ini, fim) {
+    const datas = [];
+    for (let d = new Date(ini + 'T12:00:00'); ; d.setDate(d.getDate() + 1)) {
+      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      datas.push(iso);
+      if (iso >= fim) break;
+      if (datas.length > MAX_DIAS_INTERVALO * 4) break; // trava de segurança contra loop indevido; a validação de verdade usa contarDias()
+    }
+    return datas;
+  }
+
   const atualizarTipo = () => {
-    const rec = m.querySelector('#f-rec').value === '1';
+    const tipo = m.querySelector('#f-rec').value; // '1' semanal, '0' única, '2' intervalo
+    const rec = tipo === '1';
+    const intervalo = tipo === '2';
     m.querySelector('#grupo-dia').classList.toggle('oculto', !rec);
-    m.querySelector('#grupo-data').classList.toggle('oculto', rec);
+    m.querySelector('#grupo-data').classList.toggle('oculto', rec || intervalo);
+    m.querySelector('#grupo-data-ini').classList.toggle('oculto', !intervalo);
+    m.querySelector('#grupo-data-fim').classList.toggle('oculto', !intervalo);
     m.querySelector('#grupo-intervalo').classList.toggle('oculto', !rec);
     m.querySelector('#grupo-termino').classList.toggle('oculto', !rec);
+    m.querySelector('#f-aviso-intervalo').classList.toggle('oculto', !intervalo);
     const termino = m.querySelector('#f-termino').value;
     m.querySelector('#grupo-termina-data').classList.toggle('oculto', !rec || termino !== 'data');
     m.querySelector('#grupo-termina-apos').classList.toggle('oculto', !rec || termino !== 'apos');
     atualizarPreview();
   };
   async function atualizarPreview() {
-    const rec = m.querySelector('#f-rec').value === '1';
+    const tipo = m.querySelector('#f-rec').value;
     const alvoPrev = m.querySelector('#f-preview');
-    if (!rec) { alvoPrev.textContent = ''; return; }
+    if (tipo === '2') {
+      const ini = m.querySelector('#f-data-ini').value;
+      const fim = m.querySelector('#f-data-fim').value;
+      if (!ini || !fim || fim < ini) { alvoPrev.textContent = ''; return; }
+      const total = contarDias(ini, fim);
+      if (total > MAX_DIAS_INTERVALO) {
+        alvoPrev.innerHTML = `⚠️ Intervalo de ${total} dias — máximo permitido é ${MAX_DIAS_INTERVALO}.`;
+      } else {
+        const datas = diasDoIntervalo(ini, fim);
+        alvoPrev.innerHTML = `📅 ${datas.length} celebrações serão criadas: ` + datas.map(fmtData).join(' · ');
+      }
+      return;
+    }
+    if (tipo !== '1') { alvoPrev.textContent = ''; return; }
     const r = await api('POST', '/api/eventos/preview-ocorrencias', {
       recorrente: 1,
       dia_semana: Number(m.querySelector('#f-dia').value),
@@ -2248,16 +2294,54 @@ function formEvento(ev, locais) {
     }).catch(() => null);
     if (r) alvoPrev.innerHTML = '📅 Próximas ocorrências: ' + (r.datas.map(fmtData).join(' · ') || '—');
   }
-  ['#f-rec', '#f-dia', '#f-intervalo', '#f-termino', '#f-termina-em'].forEach((s) => {
+  ['#f-rec', '#f-dia', '#f-intervalo', '#f-termino', '#f-termina-em', '#f-data-ini', '#f-data-fim'].forEach((s) => {
     m.querySelector(s).addEventListener('change', atualizarTipo);
   });
   atualizarTipo();
+
   m.querySelector('#f-ok').onclick = async () => {
+    const tipo = m.querySelector('#f-rec').value;
+    const nome = m.querySelector('#f-nome').value.trim();
+    if (!nome) return toast('Informe o nome.', true);
+
+    if (tipo === '2') {
+      const ini = m.querySelector('#f-data-ini').value;
+      const fim = m.querySelector('#f-data-fim').value;
+      if (!ini || !fim) return toast('Informe a data de início e de fim.', true);
+      if (fim < ini) return toast('A data final não pode ser antes da inicial.', true);
+      const total = contarDias(ini, fim);
+      if (total > MAX_DIAS_INTERVALO) return toast(`Intervalo muito longo (${total} dias) — máximo de ${MAX_DIAS_INTERVALO}.`, true);
+      const datas = diasDoIntervalo(ini, fim);
+      const botao = m.querySelector('#f-ok');
+      botao.disabled = true;
+      const base = {
+        local_id: Number(m.querySelector('#f-local').value),
+        hora_inicio: m.querySelector('#f-hora').value,
+        duracao_min: Number(m.querySelector('#f-dur').value),
+      };
+      let criadas = 0;
+      try {
+        for (const iso of datas) {
+          await api('POST', '/api/eventos', { ...base, nome: `${nome} — ${fmtData(iso)}`, recorrente: 0, data: iso });
+          criadas++;
+        }
+        await api('POST', '/api/ocorrencias/gerar', {}).catch(() => null); // materializa as ocorrências já; se falhar, "Gerar ocorrências" em Cultos & escalas resolve depois
+        toast(`${criadas} celebrações criadas (${fmtData(datas[0])} a ${fmtData(datas[datas.length - 1])}).`);
+        fecharModal(); navegar();
+      } catch (e) {
+        botao.disabled = false;
+        toast(criadas
+          ? `Criadas ${criadas} de ${datas.length} celebrações; parou em: ${e.message}`
+          : `Falha ao criar: ${e.message}`, true);
+      }
+      return;
+    }
+
     const termino = m.querySelector('#f-termino').value;
     const corpo = {
-      nome: m.querySelector('#f-nome').value.trim(),
+      nome,
       local_id: Number(m.querySelector('#f-local').value),
-      recorrente: Number(m.querySelector('#f-rec').value),
+      recorrente: Number(tipo),
       dia_semana: Number(m.querySelector('#f-dia').value),
       data: m.querySelector('#f-data').value || null,
       hora_inicio: m.querySelector('#f-hora').value,
@@ -2266,7 +2350,6 @@ function formEvento(ev, locais) {
       termina_em: termino === 'data' ? m.querySelector('#f-termina-em').value || null : null,
       max_ocorrencias: termino === 'apos' ? Number(m.querySelector('#f-max').value) || null : null,
     };
-    if (!corpo.nome) return toast('Informe o nome.', true);
     const ok = await tentar(() => ev ? api('PUT', `/api/eventos/${ev.id}`, corpo) : api('POST', '/api/eventos', corpo), 'Celebração salva.');
     if (ok) { fecharModal(); navegar(); }
   };
