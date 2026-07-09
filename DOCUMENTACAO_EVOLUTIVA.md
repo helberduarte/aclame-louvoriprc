@@ -222,3 +222,69 @@ Bloco 4).
   enquanto** — ele não tem clareza ainda de que tema/passagem quer usar
   como amostra. Nenhum código ou conteúdo foi criado. Retomar quando ele
   trouxer tema + referência bíblica real de alguns cultos.
+
+---
+
+## Fora da Fase 2 — pedidos avulsos do Helber (09/07/2026)
+
+Duas entregas que não fazem parte do briefing original, pedidas direto
+pelo Helber depois que a Fase 2 já tinha encerrado.
+
+### Celebrações: tipo "Vários dias" (retiros/acampamentos) — commit `09ecb2e`
+
+- Motivação real: Helber tentou cadastrar o "Retiro Espiritual 2026 —
+  Aviva-nos outra vez" (17 a 19/07, Chácara Betel) e só existia "Semanal"
+  ou "Data única" (um dia só) — sem jeito de cobrir um retiro de vários
+  dias direto pela tela.
+- `formEvento` ganhou 3ª opção de Tipo: "Vários dias (retiro/acampamento)".
+  Só aparece ao criar (não ao editar) porque não é um tipo persistente —
+  ao salvar, gera N celebrações "Data única" (uma por dia), cada uma com
+  escala/roteiro/vagas independentes, reaproveitando 100% o `POST
+  /api/eventos` já existente. Nenhuma rota nova, nenhuma mudança de
+  schema. Trava de segurança: máximo 14 dias por intervalo, com contagem
+  real via aritmética de datas (não trunca a mensagem de erro).
+- Chama `POST /api/ocorrencias/gerar` ao final — ocorrências já saem
+  materializadas, sem passo manual extra.
+- **O retiro real do Helber foi criado direto no banco de produção**
+  (script pontual reaproveitando `db.js`/`engine.js`, mesma lógica de
+  `seed-real.js`) enquanto a feature ainda estava em branch, porque o
+  navegador conectado desta sessão não conseguiu abrir domínios
+  `vercel.app` (mesma limitação recorrente). Local "Chácara Betel"
+  criado (`locais`, tipo `capela`). As 3 ocorrências (sex 17/07, sáb
+  18/07, dom 19/07) têm `tema = 'Aviva-nos outra vez'`, horário 08:00,
+  duração 720 min (12h, "dia todo" — ajustável por dia em Editar).
+  Vagas por função ficaram para o Helber configurar manualmente por dia
+  (não dá pra automatizar sem saber as necessidades reais de cada dia).
+- Achado que **não era bug real**: o Grep encontrou por 3 vezes nesta
+  sessão trechos que pareciam `<\label>`/`<\span>`/`href="#\escalas"`
+  (barra invertida em vez de normal) — todas eram artefato de exibição da
+  ferramenta de busca, não do arquivo real (confirmado via `cat -A` byte
+  a byte todas as vezes). Lição: nunca tratar como bug uma tag/URL
+  suspeita sem confirmar com `sed`/`cat -A` primeiro.
+
+### Ajuste global: dia da semana por extenso em toda data — commit `a5062dc`
+
+- Pedido: sempre que houver informação de data, mostrar o dia da semana
+  por extenso (ex.: "sábado - 18/07/2026 às 08:00h").
+- `fmtData(iso)` (usado em 21 lugares) trocou de abreviado+vírgula
+  ("sáb, 18/07/2026") para extenso+hífen, minúsculo ("sábado -
+  18/07/2026") — o dia da semana se propagou pra todo lugar que já
+  chamava essa função, sem editar cada um. `fmtDataHora(ts)` (timestamps
+  de auditoria) ganhou o mesmo tratamento, reaproveitando `fmtData`
+  internamente. Novo helper `fmtDataEHora(iso, hora)` unificou as 7
+  concatenações manuais de data+hora que não tinham o sufixo "h"
+  (Roteiro, Agenda, Trocas, Celebrações). As 2 faixas de horário sem data
+  (disponibilidade semanal, "das X às Y") ficaram como estavam —
+  não têm informação de data, fora do escopo do pedido.
+- `DIAS_CURTOS` removida (ficou sem nenhum uso depois da mudança).
+- Branch separada de propósito da `feature/celebracao-varios-dias` —
+  mudanças independentes, aprovadas juntas pelo Helber mas sem
+  dependência uma da outra.
+
+**Status de ambas:** mergeadas em `main` (commits `09ecb2e`, `a5062dc`,
+mais o bump de versão `36c4a7f` — as duas branches bumpavam
+`app.js?v=` de forma independente e precisaram de um ajuste de versão
+final pra não servir cache velho). Confirmadas em produção via smoke
+test (HTTP 200, `app.js?v=12`, `MAX_DIAS_INTERVALO` e `fmtDataEHora`
+presentes no bundle, rewrite de `/api/*` intacto). Branches deletadas
+(local + GitHub) depois do merge.
